@@ -1,0 +1,2374 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ceklok Guru MTS TANUNTUNG</title>
+  <style>
+    :root {
+      --primary: #0066cc;
+      --secondary: #004b99;
+      --accent: #f0f4f8;
+      --disabled: #e0e0e0;
+      --text: #333;
+      --bg: #f4f7f6;
+      --white: #fff;
+      --danger: #e74c3c;
+      --danger-hover: #c0392b;
+      --grey-text: #555;
+      --border-color: #ccc;
+      --success: #28a745;
+      --success-hover: #218838;
+      --warning: #ffc107;
+      --warning-hover: #e0a800;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      margin:0;
+      padding:0;
+      font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      padding-bottom: 70px; /* Space for fixed footer */
+    }
+    #app {
+      flex-grow: 1;
+      width: 100%;
+      padding: 10px; /* Sedikit padding umum */
+      box-sizing: border-box;
+    }
+    .login-active #app {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+    .container {
+        max-width:900px;
+        margin:10px auto; /* Kurangi margin atas sedikit */
+        padding:15px; /* Kurangi padding container sedikit */
+        box-sizing: border-box;
+        background-color: var(--white);
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+
+    h2 { text-align:center; color:var(--primary); margin-top:0; margin-bottom:20px; font-size:1.8em; }
+    h3 { text-align:center; color:var(--secondary); margin-top:15px; margin-bottom:15px; font-size:1.4em;}
+
+    label {
+        font-weight:bold;
+        display:block;
+        margin-bottom: 5px;
+        font-size: 0.95em;
+        color: var(--grey-text);
+    }
+    select,input[type="text"], input[type="password"], input[type="date"], input[type="month"], textarea { /* Ditambahkan input[type="month"] */
+      width:100%; padding:10px 12px; /* Konsistensi padding */
+      border-radius:6px;
+      border:1px solid var(--border-color); font-size:16px; box-sizing: border-box;
+      transition: border-color .3s, box-shadow .3s;
+      margin-bottom: 10px; /* Default margin bottom untuk form elements */
+    }
+    select { height: 42px; /* Samakan tinggi dengan input */ }
+    input[type="month"] { height: 42px; padding: 8px 12px; } /* Penyesuaian untuk input month */
+    textarea { min-height: 80px; }
+
+    select:focus, input[type="text"]:focus, input[type="password"]:focus, input[type="date"]:focus, input[type="month"]:focus, textarea:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 0.2rem rgba(0,102,204,.25);
+        outline: none;
+    }
+    input[disabled], select[disabled], textarea[disabled] { background:var(--disabled); color:#777; cursor: not-allowed; }
+
+    button {
+      padding:10px 18px; font-size:15px; border:none; border-radius:6px;
+      cursor:pointer; margin:5px; /* Margin lebih konsisten */
+      transition:background .3s;
+      color:var(--white); background:var(--primary); letter-spacing: 0.5px;
+      font-weight: 500;
+    }
+    button:hover { background:var(--secondary); }
+    button.btn-danger { background: var(--danger); }
+    button.btn-danger:hover { background: var(--danger-hover); }
+    button.btn-success { background: var(--success); }
+    button.btn-success:hover { background: var(--success-hover); }
+    button.btn-warning { background: var(--warning); color: var(--text); }
+    button.btn-warning:hover { background: var(--warning-hover); color: var(--text); }
+    button:disabled { background: var(--disabled); color: #888; cursor: not-allowed; }
+
+    .btn-container { display:flex; justify-content:center; flex-wrap:wrap; margin-top: 20px; margin-bottom: 10px; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; background-color: var(--white); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    th, td { padding: 10px 12px; text-align: left; border: 1px solid #ddd; vertical-align: middle; }
+    th { background:var(--primary); color:var(--white); font-weight: bold; text-transform: uppercase; font-size:0.85em; text-align: center;}
+    td.actions-cell { text-align: center; white-space: nowrap; }
+    td.actions-cell button { padding: 6px 10px; font-size: 0.9em; margin: 2px;}
+
+    tr:nth-child(even) { background-color: var(--accent); }
+    td input[type="text"].inline-input { width: 100%; box-sizing: border-box; margin: 0; padding: 8px 10px; line-height: 1.2; height: auto; vertical-align: middle; font-size:15px; text-align: center;}
+
+    @media (max-width:700px) {
+      table,thead,tbody,th,td,tr { display:block; }
+      thead { display:none; }
+      tr { margin-bottom:15px; background:var(--white); border:1px solid #ddd; border-radius:8px; padding:10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+      td { text-align:right; padding:10px; position:relative; border: none; border-bottom: 1px solid #eee;}
+      td:last-child { border-bottom: none; }
+      td::before { content:attr(data-label); font-weight:bold; display:inline-block; margin-right:10px; color:var(--primary); text-align:left; float:left;}
+      td.actions-cell { text-align: right;}
+      td.actions-cell button { display: inline-block; margin-left: 5px; }
+      td input[type="text"].inline-input { text-align: right; }
+      /* Mengembalikan tampilan tabel desktop untuk #hasilCeklokContainer */
+      #hasilCeklokContainer .table-container table {
+          display: table; width: 100%; margin-bottom: 0; background: transparent;
+          border: none; border-radius: 0; padding: 0; box-shadow: none;
+      }
+      #hasilCeklokContainer .table-container thead { display: table-header-group !important; }
+      #hasilCeklokContainer .table-container tbody { display: table-row-group; }
+      #hasilCeklokContainer .table-container tr {
+          display: table-row; margin-bottom: 0; background: var(--white);
+          border: none; border-radius: 0; padding: 0; box-shadow: none;
+      }
+      #hasilCeklokContainer .table-container tr:nth-child(even) { background-color: var(--accent); }
+      #hasilCeklokContainer .table-container tr:nth-child(odd) { background-color: var(--white); }
+      #hasilCeklokContainer .table-container th,
+      #hasilCeklokContainer .table-container td {
+          display: table-cell; text-align: left; padding: 10px 12px;
+          border: 1px solid #ddd; position: static; float: none;
+      }
+      #hasilCeklokContainer .table-container td::before { display: none !important; }
+      #hasilCeklokContainer .table-container th {
+          background: var(--primary); color: var(--white); font-weight: bold;
+          text-transform: uppercase; font-size: 0.85em; text-align: center;
+      }
+
+      /* Styling untuk setiap "kartu" hari pada tabel input ceklok */
+      #ceklokInputContainer .table-container tr { border-left: 3px solid var(--primary); }
+      #ceklokInputContainer .table-container td {
+          display: flex; justify-content: space-between; align-items: center;
+          text-align: left; padding: 10px 12px; border-bottom: 1px dotted #e0e0e0; position: static;
+      }
+      #ceklokInputContainer .table-container td:last-child { border-bottom: none; }
+      #ceklokInputContainer .table-container td::before {
+          float: none; flex-basis: 110px; flex-shrink: 0;
+          font-weight: 500; color: var(--grey-text); margin-right: 8px;
+      }
+      #ceklokInputContainer .table-container td select.inline-select {
+        flex-grow: 1; width: auto; max-width: 250px; padding: 9px 10px; font-size: 1em;
+      }
+      #ceklokInputContainer .table-container td[data-label="Hari"]::before,
+      #ceklokInputContainer .table-container td[data-label="Tanggal"]::before { font-weight: bold; color: var(--primary); }
+      #ceklokInputContainer .table-container td[data-label="Hari"],
+      #ceklokInputContainer .table-container td[data-label="Tanggal"] {
+          font-weight: bold; background-color: #f9f9f9; padding-top: 12px; padding-bottom: 12px;
+      }
+      #ceklokInputContainer .table-container td[data-label="Data Masuk"],
+      #ceklokInputContainer .table-container td[data-label="Data Pulang"] { color: var(--secondary); font-weight: 500; }
+      #ceklokInputContainer .table-container td input.inline-input {
+          flex-grow: 1; width: auto; max-width: 120px; padding: 9px 10px; text-align: center;
+          border: 1px solid var(--border-color); border-radius: 5px; font-size: 1em;
+      }
+      #ceklokInputContainer .table-container td input.inline-input:focus {
+          border-color: var(--primary); box-shadow: 0 0 0 0.2rem rgba(0,102,204,.25);
+      }
+      #ceklokInputContainer .table-container tr.libur-row { background-color: #fff5f5 !important; border-left-color: var(--danger); }
+      #ceklokInputContainer .table-container tr.libur-row td[data-label="Hari"],
+      #ceklokInputContainer .table-container tr.libur-row td[data-label="Tanggal"],
+      #ceklokInputContainer .table-container tr.libur-row td.libur-text {
+          color: var(--danger); font-weight: bold; background-color: #fff5f5;
+      }
+      #ceklokInputContainer .table-container tr.libur-row td[data-label="Data Masuk"],
+      #ceklokInputContainer .table-container tr.libur-row td[data-label="Data Pulang"] { color: var(--danger); }
+      #ceklokInputContainer .table-container tr.libur-row td.libur-note {
+          display: block; padding: 10px 12px; background-color: transparent;
+      }
+      #ceklokInputContainer .table-container tr.libur-row td.libur-note::before {
+          display: block; flex-basis: auto; margin-bottom: 6px; font-weight: bold; color: var(--danger);
+      }
+      #ceklokInputContainer .table-container tr.libur-row td.libur-note span.holiday-description {
+          display: block; font-style: italic; color: var(--danger); text-align: left; line-height: 1.4;
+      }
+    }
+
+    #loading { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,.85); z-index:9999; display:none;
+      align-items:center; justify-content:center; flex-direction:column;
+    }
+    .spinner { border:8px solid #f3f3f3; border-top:8px solid var(--primary); border-radius:50%; width:50px; height:50px; animation:spin 1s linear infinite; }
+    #loading p { margin-top:15px; font-size:16px; color:var(--primary); font-weight:500; }
+    @keyframes spin { 0%{transform:rotate(0deg);}100%{transform:rotate(360deg);} }
+
+    .error-message {
+      font-size:.9em; color:var(--danger); margin-top: 5px; margin-bottom: 10px; display:block; text-align:left;
+      padding: 8px; background-color: #ffebee; border: 1px solid var(--danger); border-radius: 4px;
+    }
+    .error-message.inline-form-error { margin-bottom: 15px; }
+    .input-error { border:1px solid var(--danger) !important; background:#fff0f0; }
+
+    .libur-text { color:var(--danger); font-weight: bold; }
+    .libur-note { text-align:left !important; color:var(--danger); font-style: italic; }
+
+    .form-column {
+      display: flex; flex-direction: column; gap: 15px;
+      max-width: 500px;
+      margin: 20px auto; padding: 25px;
+      background-color: var(--white); border-radius: 10px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      border-top: 5px solid var(--primary);
+    }
+    .form-column h2 { margin-bottom: 20px; font-size: 1.6em; }
+    .form-column h3 { margin-bottom: 18px; font-size: 1.2em; color: var(--secondary); }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group input, .form-group select, .form-group textarea { margin-bottom: 0; }
+    .form-group small { font-size: 0.8em; color: var(--grey-text); margin-top: 3px; }
+
+    .form-row {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    .form-row label {
+        flex: 0 0 150px;
+        margin-bottom: 0;
+        text-align: right;
+        padding-right: 5px;
+    }
+    .form-row .input-wrapper {
+        flex-grow: 1;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .form-row .input-wrapper input[type="text"],
+    .form-row .input-wrapper input[type="month"], /* Ditambahkan input[type="month"] */
+    .form-row .input-wrapper select {
+        margin-bottom: 0;
+    }
+    .form-row-note {
+        padding-left: 165px;
+        font-size:0.85em;
+        color:var(--grey-text);
+        display:block;
+        margin-top:-10px;
+        margin-bottom: 10px;
+    }
+
+    .password-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+        width: 100%;
+    }
+    .password-wrapper input[type="password"],
+    .password-wrapper input[type="text"] {
+        padding-right: 45px !important;
+        margin-bottom:0 !important;
+    }
+    .toggle-password-icon {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: pointer;
+        user-select: none;
+        color: var(--grey-text);
+        transition: color 0.2s;
+        display: inline-flex;
+        align-items: center;
+    }
+    .toggle-password-icon:hover { color: var(--primary); }
+
+    footer {
+      background-color: var(--primary); color: var(--white);
+      text-align: center; padding: 12px 20px; width: 100%;
+      box-sizing: border-box; position: fixed; bottom: 0; left: 0; z-index: 1000;
+    }
+    footer p { margin: 0; font-size: 0.85em; }
+
+    .kalender-form-container, .kalender-list-container {
+      margin-top: 20px; padding: 20px; background-color: var(--white);
+      border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .kalender-form-container h3, .kalender-list-container h3 {
+        margin-top: 0; color: var(--primary);
+        border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px;
+    }
+
+    .custom-alert {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: var(--primary);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        z-index: 10000;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out, top 0.3s ease-in-out;
+        font-size: 0.95em;
+        text-align: center;
+        min-width: 250px;
+        max-width: 90%;
+    }
+    .custom-alert.show { opacity: 1; top: 60px; }
+    .custom-alert.error { background-color: var(--danger); }
+    .custom-alert.success { background-color: var(--success); }
+
+    @media (max-width: 600px) {
+        .form-column { gap: 12px; padding: 20px; }
+        .form-row {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 5px;
+            margin-bottom: 12px;
+        }
+        .form-row label {
+            flex-basis: auto;
+            text-align: left;
+            padding-right: 0;
+            margin-bottom: 3px;
+        }
+        .form-row .input-wrapper { width: 100%; }
+        .form-row .input-wrapper input[type="text"],
+        .form-row .input-wrapper input[type="month"], /* Ditambahkan input[type="month"] */
+        .form-row .input-wrapper select { width: 100%; }
+        .form-row .input-wrapper button {
+            margin-left: 0 !important;
+            margin-top: 8px !important;
+            width: 100%;
+        }
+        .form-row-note { padding-left: 0; width: 100%; text-align: left; margin-top: 0;}
+    }
+    .table-container { overflow-x: auto; }
+
+    #ceklokInputContainer .table-container th:nth-child(5),
+    #ceklokInputContainer .table-container th:nth-child(6) { width: 18%; }
+    #ceklokInputContainer .table-container th:nth-child(7) { width: 24%; }
+    #ceklokInputContainer .table-container td .inline-input,
+    #ceklokInputContainer .table-container td .inline-select {
+      width: 100%;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    </div>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <p id="loadingMessage">Memproses...</p>
+  </div>
+
+  <div id="customAlert" class="custom-alert">Pesan Alert</div>
+
+  <div id="changePasswordModal" style="display:none; position:fixed; z-index:1001; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.4);">
+    <div style="background-color:#fefefe; margin:10% auto; padding:20px; border:1px solid #888; width:80%; max-width:400px; border-radius:8px; position:relative;">
+      <span onclick="closeChangePasswordModal()" style="color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;" title="Tutup">&times;</span>
+      <h3>Ubah Password</h3>
+      <div class="form-group">
+        <label for="currentPassword">Password Lama:</label>
+        <input type="password" id="currentPassword" style="width: calc(100% - 24px);">
+      </div>
+      <div class="form-group">
+        <label for="newPassword">Password Baru:</label>
+        <input type="password" id="newPassword" style="width: calc(100% - 24px);">
+      </div>
+      <div class="form-group">
+        <label for="confirmNewPassword">Konfirmasi Password Baru:</label>
+        <input type="password" id="confirmNewPassword" style="width: calc(100% - 24px);">
+      </div>
+      <div id="changePasswordError" class="error-message" style="display:none; margin-bottom:15px;"></div>
+      <div class="btn-container">
+        <button onclick="submitChangePassword()">Simpan Perubahan</button>
+        <button onclick="closeChangePasswordModal()" style="background-color:#ccc; color:#333;">Batal</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>&copy; <span id="currentYear">2024</span> Created by Syamsul Bahri</p>
+  </footer>
+
+  <script>
+    // Variabel global
+    let loggedInUser = null;
+    let namaGuru = ''; // Nama guru yang sedang aktif di form ceklok
+    // bulanTahun tidak lagi global statis, digantikan activeCeklokMonthYear
+    let dataTanggal = []; // Data ceklok untuk bulan aktif
+    let allTeachersList = [];
+    let currentView = '';
+    let currentLockIdValue = null;
+    let currentBackupSheetName = null;
+
+    let idleTimer = null;
+    const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 menit
+
+    // Variabel baru untuk rentang tanggal dinamis
+    let globalServerCurrentMonthYear = null; // Format "MM/YYYY", contoh: "05/2025" (dari server)
+    let globalAdminMinMonthYear = null;     // Format "MM/YYYY", contoh: "02/2025" (dari Setting!A1)
+    let activeCeklokMonthYear = null;       // Format "MM/YYYY", bulan yang sedang di-load/ditampilkan di form ceklok
+
+    // --- Fungsi Utilitas Umum ---
+    function showAlert(message, type = 'info', duration = 3500) {
+        const alertBox = document.getElementById('customAlert');
+        alertBox.textContent = message;
+        alertBox.className = 'custom-alert';
+        if (type === 'error') alertBox.classList.add('error');
+        else if (type === 'success') alertBox.classList.add('success');
+        alertBox.classList.add('show');
+        setTimeout(() => { alertBox.classList.remove('show'); }, duration);
+    }
+    function showLoading(message = "Memproses...") {
+        document.getElementById("loadingMessage").textContent = message;
+        document.getElementById("loading").style.display = "flex";
+    }
+    function hideLoading() { document.getElementById("loading").style.display = "none"; }
+    function isValidJamFormat(j_input) {
+        if (!j_input) return true;
+        const m = j_input.match(/^(\d{1,2})[:.](\d{1,2})$/);
+        if (!m) return false;
+        const h = parseInt(m[1], 10); const mn = parseInt(m[2], 10);
+        return h >= 0 && h < 24 && mn >= 0 && mn < 60;
+    }
+    function normalizeJamFormat(j_input) {
+        if (!j_input) return '';
+        const m = j_input.match(/^(\d{1,2})[:.](\d{1,2})$/);
+        if (!m) return j_input;
+        const h = String(m[1]).padStart(2, '0'); const mn = String(m[2]).padStart(2, '0');
+        return `${h}.${mn}`;
+    }
+    function showInlineError(containerId, message) {
+        const el = document.getElementById(containerId);
+        if (el) { el.textContent = message; el.style.display = 'block'; }
+    }
+    function clearInlineError(containerId) {
+        const el = document.getElementById(containerId);
+        if (el) { el.textContent = ''; el.style.display = 'none'; }
+    }
+    function clearInputError(...inputElements) {
+        inputElements.forEach(inputElement => {
+            if(inputElement) inputElement.classList.remove('input-error');
+        });
+    }
+    function showInputError(inputElement) {
+        if(inputElement) inputElement.classList.add('input-error');
+    }
+
+    // --- Fungsi Utilitas Konversi Tanggal ---
+    function convertMMYYYYtoYYYYMM(mm_yyyy) { // "05/2025" -> "2025-05"
+        if (!mm_yyyy || !mm_yyyy.includes('/')) return "";
+        const parts = mm_yyyy.split('/');
+        if (parts.length !== 2) return "";
+        return `${parts[1]}-${parts[0]}`;
+    }
+
+    function convertYYYYMMtoMMYYYY(yyyy_mm) { // "2025-05" -> "05/2025"
+        if (!yyyy_mm || !yyyy_mm.includes('-')) return "";
+        const parts = yyyy_mm.split('-');
+        if (parts.length !== 2) return "";
+        return `${parts[1]}/${parts[0]}`;
+    }
+
+
+    // --- Fungsi Memuat Konten HTML Parsial ---
+    function loadHtmlContent(filename, targetElementId, callback, dataForRender) {
+        showLoading("Memuat tampilan...");
+        google.script.run
+            .withSuccessHandler(html => {
+                const target = document.getElementById(targetElementId);
+                if (target) {
+                    target.innerHTML = html;
+                    if (callback) callback(dataForRender);
+                } else {
+                    showAlert(`Error: Target elemen '${targetElementId}' tidak ditemukan.`, 'error');
+                }
+                hideLoading();
+            })
+            .withFailureHandler(err => {
+                hideLoading();
+                showAlert(`Gagal memuat ${filename}: ${err.message}`, 'error');
+                const target = document.getElementById(targetElementId);
+                if (target) target.innerHTML = `<div class="container"><p style="color:red;">Gagal memuat tampilan. Silakan coba lagi.</p><button onclick="renderView('login')">Kembali ke Login</button></div>`;
+            })
+            .getHtmlContent(filename);
+    }
+
+    // --- Navigasi dan Rendering Tampilan Utama ---
+    function renderView(viewName, data, postRenderCallback) {
+        console.log("Merender tampilan:", viewName, "dengan data:", data);
+        currentView = viewName;
+        document.body.classList.remove('login-active');
+
+        let targetElementId = 'app';
+        let htmlFile = '';
+        let setupFunction = null;
+
+        switch(viewName) {
+            case 'login':
+                document.body.classList.add('login-active');
+                htmlFile = 'login_form.html';
+                setupFunction = setupLoginFormEventListeners;
+                break;
+            case 'admin_dashboard':
+                htmlFile = 'admin_dashboard_content.html';
+                setupFunction = setupAdminDashboardView;
+                break;
+            case 'ceklok_table':
+                htmlFile = 'ceklok_table_content.html';
+                setupFunction = setupCeklokTableView;
+                break;
+            // ... (case lainnya untuk user_management, teacher_management, dll.) ...
+            case 'user_management':
+                htmlFile = 'user_management_content.html';
+                setupFunction = setupUserManagementView;
+                break;
+            case 'teacher_management':
+                htmlFile = 'teacher_management_content.html';
+                setupFunction = setupTeacherManagementView;
+                break;
+            case 'kalender_pendidikan':
+                htmlFile = 'kalender_pendidikan_content.html';
+                setupFunction = setupKalenderPendidikanView;
+                break;
+            case 'hasil_ceklok':
+                htmlFile = 'hasil_ceklok_content.html';
+                setupFunction = setupHasilCeklokView;
+                break;
+            default:
+                console.error("Tampilan tidak dikenal:", viewName);
+                document.getElementById('app').innerHTML = '<p>Tampilan tidak ditemukan: ' + viewName + '</p>';
+                hideLoading();
+                return;
+        }
+
+        if (htmlFile) {
+            loadHtmlContent(htmlFile, targetElementId, (dataForSetupFunction) => {
+                if (setupFunction) {
+                    console.log("Menjalankan setupFunction untuk", viewName);
+                    setupFunction(dataForSetupFunction);
+                }
+                console.log("Memperbarui visibilitas tombol Google untuk view:", viewName);
+                updateGoogleLinkButtonVisibility();
+                if (postRenderCallback) {
+                    postRenderCallback();
+                }
+            }, data);
+        } else {
+             // ... (handle error jika htmlFile tidak ada) ...
+        }
+    }
+
+    // --- LOGIN ---
+    function setupLoginFormEventListeners() {
+        // ... (kode setupLoginFormEventListeners yang sudah ada) ...
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const togglePasswordButton = document.getElementById('togglePassword');
+        const loginButton = document.getElementById('loginButton');
+
+        if (loginButton) loginButton.onclick = handleLogin;
+        if (usernameInput) usernameInput.onkeydown = (e) => { if (e.key === 'Enter') handleLogin(); };
+        if (passwordInput) passwordInput.onkeydown = (e) => { if (e.key === 'Enter') handleLogin(); };
+
+        if (togglePasswordButton && passwordInput) {
+            const svgIconShowPassword = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+            const svgIconHidePassword = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+            togglePasswordButton.onclick = () => {
+                if (passwordInput.type === 'password') {
+                    passwordInput.type = 'text';
+                    togglePasswordButton.innerHTML = svgIconHidePassword;
+                    togglePasswordButton.setAttribute('title', 'Sembunyikan password');
+                } else {
+                    passwordInput.type = 'password';
+                    togglePasswordButton.innerHTML = svgIconShowPassword;
+                    togglePasswordButton.setAttribute('title', 'Lihat password');
+                }
+            };
+        }
+        const footer = document.querySelector('footer');
+        if (footer) footer.style.display = 'block';
+    }
+
+    function handleLogin() {
+        // ... (kode handleLogin yang sudah ada) ...
+        const usernameEl = document.getElementById('username');
+        const passwordEl = document.getElementById('password');
+        const loginErrorEl = document.getElementById('loginError');
+
+        clearInputError(usernameEl, passwordEl);
+        if (loginErrorEl) loginErrorEl.style.display = "none";
+
+        const username = usernameEl.value.trim();
+        const password = passwordEl.value;
+
+        let hasError = false;
+        if (!username) { showInputError(usernameEl); hasError = true; }
+        if (!password) { showInputError(passwordEl); hasError = true; }
+
+        if (hasError) {
+            if (loginErrorEl) { loginErrorEl.textContent = "Username dan password wajib diisi."; loginErrorEl.style.display = "block"; }
+            return;
+        }
+        showLoading("Memverifikasi login...");
+        google.script.run
+            .withSuccessHandler(response => {
+                hideLoading();
+                if (response.success) {
+                    loggedInUser = { username: response.username, role: response.role, teacherName: response.teacherName, googleEmail: response.googleEmail };
+                    try {
+                        sessionStorage.setItem('loggedInUserData', JSON.stringify(loggedInUser));
+                    } catch (e) {
+                        console.error("Failed to save user data to sessionStorage:", e);
+                    }
+                    proceedAfterLogin(); // Ini akan memicu pengambilan setting tanggal
+                } else {
+                    if (loginErrorEl) { loginErrorEl.textContent = response.error || "Login gagal."; loginErrorEl.style.display = "block"; }
+                    if (passwordEl) passwordEl.value = "";
+                }
+            })
+            .withFailureHandler(err => {
+                hideLoading();
+                if (loginErrorEl) { loginErrorEl.textContent = "Error server: " + err.message; loginErrorEl.style.display = "block"; }
+            })
+            .verifyLogin(username, password);
+    }
+
+    function logout() {
+        console.log("Logging out...");
+        loggedInUser = null; namaGuru = ''; dataTanggal = []; allTeachersList = [];
+        currentLockIdValue = null; currentBackupSheetName = null;
+        globalServerCurrentMonthYear = null; globalAdminMinMonthYear = null; activeCeklokMonthYear = null; // Reset variabel tanggal
+
+        sessionStorage.removeItem('loggedInUserData');
+        clearTimeout(idleTimer);
+        removeIdleListeners();
+
+        renderView('login');
+        window.scrollTo(0, 0);
+        showAlert("Anda telah logout.", "info", 2000);
+    }
+
+    function resetIdleTimer() {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(logoutDueToIdle, IDLE_TIMEOUT_MS);
+    }
+    function logoutDueToIdle() {
+        console.log("Idle timeout reached.");
+        showAlert("Sesi Anda berakhir karena tidak aktif. Silakan login kembali.", "warning", 5000);
+        logout();
+    }
+    function setupIdleTimer() {
+        console.log("Setting up idle timer and listeners.");
+        removeIdleListeners();
+        window.addEventListener('mousemove', resetIdleTimer);
+        window.addEventListener('mousedown', resetIdleTimer);
+        window.addEventListener('keypress', resetIdleTimer);
+        window.addEventListener('scroll', resetIdleTimer, true);
+        window.addEventListener('touchstart', resetIdleTimer);
+        resetIdleTimer();
+    }
+    function removeIdleListeners() {
+        console.log("Removing idle listeners.");
+        window.removeEventListener('mousemove', resetIdleTimer);
+        window.removeEventListener('mousedown', resetIdleTimer);
+        window.removeEventListener('keypress', resetIdleTimer);
+        window.removeEventListener('scroll', resetIdleTimer, true);
+        window.removeEventListener('touchstart', resetIdleTimer);
+    }
+
+    function proceedAfterLogin() {
+        if (!loggedInUser) { renderView('login'); return; }
+        setupIdleTimer();
+        showLoading("Memuat data aplikasi...");
+
+        // Panggil getCeklokInputSettings untuk mendapatkan batasan tanggal global
+        google.script.run
+            .withSuccessHandler(settingsResponse => {
+                if (settingsResponse.error || !settingsResponse.success) {
+                    hideLoading();
+                    showAlert(`Error pengaturan tanggal: ${settingsResponse.error || 'Data tidak valid.'}`, 'error');
+                    logout();
+                    return;
+                }
+                globalAdminMinMonthYear = settingsResponse.adminDefinedMinMonthYear;
+                globalServerCurrentMonthYear = settingsResponse.serverCurrentMonthYear;
+                // Set bulan aktif default ke bulan berjalan server
+                activeCeklokMonthYear = globalServerCurrentMonthYear;
+
+                // Lanjutkan ke logika berdasarkan peran pengguna
+                if (loggedInUser.role === "admin") {
+                    google.script.run
+                        .withSuccessHandler(response => { // response dari getInitialData
+                            hideLoading();
+                            if (response.error) {
+                                showAlert(`Error Inisialisasi Admin: ${response.error}`, 'error');
+                                // ... (handle error, logout) ...
+                                return;
+                            }
+                            allTeachersList = response.guruList || [];
+                            // Perhatikan: response.adminDefinedMinMonthYear dari getInitialData
+                            // adalah nilai yang sama dengan globalAdminMinMonthYear yang sudah kita set.
+                            // Kita bisa langsung pass globalAdminMinMonthYear ke renderView jika perlu.
+                            renderView('admin_dashboard', {
+                                guruList: allTeachersList,
+                                adminDefinedMinMonthYearDisplay: response.adminDefinedMinMonthYear // ini untuk ditampilkan di input admin
+                            });
+                        })
+                        .withFailureHandler(err => { /* ... handle error ... */ logout(); })
+                        .getInitialData(); // getInitialData mengembalikan adminDefinedMinMonthYear dari A1
+                } else if (loggedInUser.role === "user" && loggedInUser.teacherName) {
+                    namaGuru = loggedInUser.teacherName;
+                    // Langsung panggil loadCeklokDataFromServer dengan bulan aktif (defaultnya bulan server)
+                    loadCeklokDataFromServer(namaGuru, activeCeklokMonthYear, true); // true = isUserRoleView
+                } else {
+                    hideLoading();
+                    showAlert("Peran pengguna tidak valid atau data guru tidak lengkap.", 'error');
+                    logout();
+                }
+                updateGoogleLinkButtonVisibility(); // Pastikan ini dipanggil setelah view mungkin termuat
+            })
+            .withFailureHandler(err => {
+                hideLoading();
+                showAlert(`Gagal mengambil pengaturan tanggal server: ${err.message}`, 'error');
+                logout();
+            })
+            .getCeklokInputSettings(); // Panggil fungsi backend baru
+    }
+
+    // --- Fungsi baru untuk memuat data ceklok berdasarkan bulan/tahun ---
+    function loadCeklokDataFromServer(teacherName, monthYearToLoad, isUserRoleView) {
+        showLoading(`Memuat data ceklok...`);
+        google.script.run
+            .withSuccessHandler(ceklokResponse => {
+                hideLoading();
+                if (ceklokResponse.error) {
+                    showAlert(`Error data ceklok: ${ceklokResponse.error}`, 'error');
+                    const tableBody = document.getElementById('ceklokTableBody');
+                    if (tableBody) tableBody.innerHTML = `<tr><td colspan="7" style="color:red; text-align:center;">${ceklokResponse.error}</td></tr>`;
+                    // Set display bulan ke yang diminta meski error
+                    const bulanTahunDisplayEl = document.getElementById('ceklokBulanTahunDisplay');
+                    if(bulanTahunDisplayEl) bulanTahunDisplayEl.textContent = monthYearToLoad;
+                    return;
+                }
+                dataTanggal = ceklokResponse.data;
+                const ketLiburOptions = ceklokResponse.optionsKeteranganLibur;
+                activeCeklokMonthYear = monthYearToLoad; // Update bulan aktif
+
+                renderView('ceklok_table', {
+                    rows: dataTanggal,
+                    options: ketLiburOptions,
+                    isUserRole: isUserRoleView,
+                    currentMonthYearForDisplay: activeCeklokMonthYear
+                });
+            })
+            .withFailureHandler(err => {
+                hideLoading();
+                showAlert(`Gagal memuat data ceklok: ${err.message}`, 'error');
+            })
+            .getCeklokData(teacherName, monthYearToLoad);
+    }
+
+
+    // --- ADMIN DASHBOARD ---
+    function setupAdminDashboardView(data) {
+        // data = { guruList: [], adminDefinedMinMonthYearDisplay: "MM/YYYY" }
+        const namaSelect = document.getElementById('namaAdminSelect');
+        if (namaSelect) {
+            let guruOptionsHtml = data.guruList && data.guruList.length > 0 ?
+                data.guruList.map(n => `<option value="${n}">${n}</option>`).join('') :
+                '<option value="" disabled>Tidak ada data guru</option>';
+            namaSelect.innerHTML = `<option disabled selected value="">-- Pilih Nama Guru --</option>${guruOptionsHtml}`;
+            namaSelect.disabled = !(data.guruList && data.guruList.length > 0);
+        }
+
+        const bulanAdminInputEl = document.getElementById('bulanAdminInput');
+        if (bulanAdminInputEl) {
+            bulanAdminInputEl.value = data.adminDefinedMinMonthYearDisplay || '';
+            const labelBulanAdmin = document.querySelector('label[for="bulanAdminInput"]');
+            if (labelBulanAdmin) labelBulanAdmin.textContent = "Batas Bawah Periode Ceklok (A1):";
+        }
+
+        const nextBtn = document.getElementById('btnNextCeklokGuru');
+        if(nextBtn) nextBtn.disabled = !(data.guruList && data.guruList.length > 0);
+
+        window.scrollTo(0, 0);
+        // ... (kode untuk memuat histori login yang sudah ada) ...
+        const loadingMessageForHistory = document.getElementById('loginHistoryTableBody');
+        if (loadingMessageForHistory) {
+            loadingMessageForHistory.innerHTML = `<tr><td colspan="3" style="text-align:center; padding: 15px;">Memuat histori login...</td></tr>`;
+        }
+        google.script.run
+            .withSuccessHandler(historyResponse => { /* ... */ })
+            .withFailureHandler(err => { /* ... */ })
+            .getLoginHistory();
+    }
+
+    function handleAdminPilihGuru() {
+        const namaSelect = document.getElementById('namaAdminSelect');
+        if (!namaSelect || !namaSelect.value) { showAlert('Pilih nama guru dahulu.', 'error'); return; }
+        namaGuru = namaSelect.value;
+
+        // Admin saat memilih guru, defaultnya akan memuat data untuk bulan berjalan server
+        if (!globalServerCurrentMonthYear) {
+            showAlert('Pengaturan bulan server tidak termuat. Coba refresh.', 'error'); return;
+        }
+        activeCeklokMonthYear = globalServerCurrentMonthYear; // Set bulan aktif
+        loadCeklokDataFromServer(namaGuru, activeCeklokMonthYear, false); // false karena ini dari admin dashboard
+    }
+
+    function handleUpdateBulanTahunAdmin() {
+        const bulanAdminInputEl = document.getElementById('bulanAdminInput');
+        if (!bulanAdminInputEl) { showAlert("Elemen input Bulan/Tahun tidak ditemukan.", 'error'); return; }
+        const newBulanTahunValue = bulanAdminInputEl.value.trim();
+        clearInputError(bulanAdminInputEl);
+
+        if (!newBulanTahunValue) { showAlert("Batas Bawah Periode tidak boleh kosong.", 'error'); showInputError(bulanAdminInputEl); return; }
+        if (!/^(0[1-9]|1[0-2])\/(20\d{2}|21\d{2})$/.test(newBulanTahunValue)) {
+            showAlert("Format Batas Bawah Periode salah (mm/yyyy, tahun 2000-2199).", 'error'); showInputError(bulanAdminInputEl); return;
+        }
+        showLoading("Memperbarui Batas Bawah Periode Ceklok...");
+        google.script.run
+            .withSuccessHandler(response => {
+                hideLoading();
+                if (response.success) {
+                    showAlert(response.message, 'success');
+                    if(bulanAdminInputEl) bulanAdminInputEl.value = response.newBulanTahun;
+                    globalAdminMinMonthYear = response.newBulanTahun; // Update variabel global frontend
+                } else { showAlert(response.error || "Gagal update.", 'error'); }
+            })
+            .withFailureHandler(err => { hideLoading(); showAlert(`Error server update: ${err.message}`, 'error'); })
+            .setBulanTahunSetting(newBulanTahunValue);
+    }
+
+    function goBackToAdminDashboard() {
+        if (loggedInUser && loggedInUser.role === 'admin') {
+            // Panggil proceedAfterLogin lagi untuk admin, ini akan memuat ulang setting dan render dashboard
+             google.script.run
+                .withSuccessHandler(settingsResponse => {
+                    if (settingsResponse.error || !settingsResponse.success) { /* ... handle error ... */ return; }
+                    globalAdminMinMonthYear = settingsResponse.adminDefinedMinMonthYear;
+                    globalServerCurrentMonthYear = settingsResponse.serverCurrentMonthYear;
+                    // activeCeklokMonthYear tidak relevan untuk admin dashboard utama
+                    google.script.run
+                        .withSuccessHandler(response => {
+                            allTeachersList = response.guruList || [];
+                            renderView('admin_dashboard', {
+                                guruList: allTeachersList,
+                                adminDefinedMinMonthYearDisplay: response.adminDefinedMinMonthYear
+                            });
+                        })
+                        .getInitialData();
+                })
+                .getCeklokInputSettings();
+        } else {
+            logout(); // Jika bukan admin, logout saja
+        }
+    }
+
+    // --- CEKLOK TABLE (INPUT) ---
+    function setupCeklokTableView(data) {
+        // data = { rows, options, isUserRole, currentMonthYearForDisplay }
+        const { rows, options: ketLiburOptions, isUserRole, currentMonthYearForDisplay } = data;
+        const tableBody = document.getElementById('ceklokTableBody');
+        const guruNameEl = document.getElementById('ceklokGuruName');
+        const bulanTahunDisplayEl = document.getElementById('ceklokBulanTahunDisplay');
+        const ceklokBulanSelectEl = document.getElementById('ceklokBulanSelect'); // ID baru
+        const ceklokTahunSelectEl = document.getElementById('ceklokTahunSelect'); // ID baru
+        const btnKembaliContainer = document.getElementById('ceklokTombolKembaliContainer');
+
+        if (guruNameEl) guruNameEl.textContent = namaGuru;
+        if (bulanTahunDisplayEl) bulanTahunDisplayEl.textContent = currentMonthYearForDisplay || activeCeklokMonthYear || "Bulan belum dipilih";
+
+        if (ceklokBulanSelectEl && ceklokTahunSelectEl) {
+            const targetMonthYear = currentMonthYearForDisplay || activeCeklokMonthYear || globalServerCurrentMonthYear;
+            let defaultYear = getYearFromMMYYYY(targetMonthYear);
+            let defaultMonth = getMonthStrFromMMYYYY(targetMonthYear);
+
+            let minAllowedYear = getYearFromMMYYYY(globalAdminMinMonthYear);
+            let maxAllowedYear = getYearFromMMYYYY(globalServerCurrentMonthYear);
+
+            // Fallback jika globalAdminMinMonthYear atau globalServerCurrentMonthYear null/undefined
+            if (isNaN(minAllowedYear)) minAllowedYear = new Date().getFullYear() - 5; // 5 tahun ke belakang
+            if (isNaN(maxAllowedYear)) maxAllowedYear = new Date().getFullYear();    // Tahun ini
+            if (isNaN(defaultYear)) defaultYear = maxAllowedYear;
+            if (!defaultMonth || defaultMonth.length !== 2) defaultMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+
+
+            populateYearSelect('ceklokTahunSelect', minAllowedYear, maxAllowedYear, defaultYear);
+            ceklokBulanSelectEl.value = defaultMonth;
+
+            // Tambahkan listener untuk validasi saat tahun atau bulan berubah
+            ceklokTahunSelectEl.onchange = () => validateMonthRange('ceklokBulanSelect', 'ceklokTahunSelect');
+            ceklokBulanSelectEl.onchange = () => validateMonthRange('ceklokBulanSelect', 'ceklokTahunSelect'); // Validasi juga saat bulan berubah
+            validateMonthRange('ceklokBulanSelect', 'ceklokTahunSelect'); // Panggil sekali untuk set awal
+        }
+
+        if (tableBody) {
+            let bodyHtml = '';
+            if (rows && rows.length > 0) {
+                rows.forEach((row, i) => {
+                    if (row.isLibur) {
+                        bodyHtml += `<tr class="libur-row">
+                            <td class="libur-text" data-label="Hari">${row.hari}</td>
+                            <td class="libur-text" data-label="Tanggal">${row.tanggal}</td>
+                            <td data-label="Data Masuk" style="text-align: center;">-</td>
+                            <td data-label="Data Pulang" style="text-align: center;">-</td>
+                            <td colspan="3" class="libur-note" data-label="Keterangan"><span class="holiday-description">${row.keterangan || 'Hari Libur'}</span></td>
+                        </tr>`;
+                    } else {
+                        let ketLiburDropdownHtml = `<select id="ketLiburManual${i}" class="inline-select ket-libur-manual-dropdown" data-rowindex="${i}">`;
+                        ketLiburDropdownHtml += '<option value="">-- Alasan Tidak Hadir --</option>';
+                        if (ketLiburOptions && ketLiburOptions.length > 0) {
+                            ketLiburOptions.forEach(opt => {
+                                const selected = (opt === row.keteranganLiburManual) ? 'selected' : '';
+                                ketLiburDropdownHtml += `<option value="${opt}" ${selected}>${opt}</option>`;
+                            });
+                        }
+                        ketLiburDropdownHtml += '</select>';
+                        const isKetLiburManualSelected = row.keteranganLiburManual && row.keteranganLiburManual.trim() !== "";
+                        const jamMasukInputValue = isKetLiburManualSelected ? "" : (row.dataMasuk || "");
+                        const jamPulangInputValue = isKetLiburManualSelected ? "" : (row.dataPulang || "");
+
+                        bodyHtml += `<tr>
+                            <td data-label="Hari">${row.hari}</td>
+                            <td data-label="Tanggal">${row.tanggal}</td>
+                            <td data-label="Data Masuk" style="text-align: center;">${row.dataMasuk || '-'}</td>
+                            <td data-label="Data Pulang" style="text-align: center;">${row.dataPulang || '-'}</td>
+                            <td data-label="Input Jam Masuk"><input type="text" class="inline-input" id="jamMasuk${i}" placeholder="HH.MM" value="${jamMasukInputValue}" ${isKetLiburManualSelected ? 'disabled' : ''}></td>
+                            <td data-label="Input Jam Pulang"><input type="text" class="inline-input" id="jamPulang${i}" placeholder="HH.MM" value="${jamPulangInputValue}" ${isKetLiburManualSelected ? 'disabled' : ''}></td>
+                            <td data-label="Keterangan Libur/Alasan">${ketLiburDropdownHtml}</td>
+                        </tr>`;
+                    }
+                });
+            } else {
+                 bodyHtml = `<tr><td colspan="7" style="text-align:center;">Tidak ada data untuk periode ini atau periode belum dipilih.</td></tr>`;
+            }
+            tableBody.innerHTML = bodyHtml;
+            attachTimeInputValidationToCeklok();
+            attachKetLiburDropdownListeners();
+        }
+
+        if (btnKembaliContainer) {
+            btnKembaliContainer.style.display = isUserRole ? 'none' : 'inline-block';
+             // Update teks tombol kembali jika dari admin dashboard
+            if (!isUserRole) {
+                const btnBack = btnKembaliContainer.querySelector('button');
+                if (btnBack) btnBack.textContent = "Kembali ke Dashboard Admin";
+            }
+        }
+        setupLockIdAndExportClientFeatures();
+        window.scrollTo(0, 0);
+    }
+
+    // Fungsi ini dipanggil oleh tombol "Muat Data" di ceklok_table_content.html
+    function loadCeklokDataForSelectedMonth() {
+        const bulanSelectEl = document.getElementById('ceklokBulanSelect');
+        const tahunSelectEl = document.getElementById('ceklokTahunSelect');
+
+        if (!bulanSelectEl || !tahunSelectEl) {
+            showAlert("Elemen input bulan atau tahun tidak ditemukan.", "error"); return;
+        }
+        const selectedMonth = bulanSelectEl.value; // Format "MM"
+        const selectedYear = tahunSelectEl.value;  // Format "YYYY"
+
+        if (!selectedMonth || !selectedYear) {
+            showAlert("Pilih bulan dan tahun terlebih dahulu.", "warning"); return;
+        }
+        // Pastikan bulan yang dipilih tidak disabled
+        if (bulanSelectEl.options[bulanSelectEl.selectedIndex].disabled) {
+            showAlert("Bulan yang dipilih tidak valid untuk tahun ini. Silakan pilih bulan lain.", "warning");
+            return;
+        }
+
+        const newActiveMonthYear = `${selectedMonth}/${selectedYear}`; // Format "MM/YYYY"
+
+        // Validasi client-side tambahan (sebenarnya sudah ditangani oleh validateMonthRange, tapi double check)
+        const minYear = getYearFromMMYYYY(globalAdminMinMonthYear);
+        const minMonth = parseInt(getMonthStrFromMMYYYY(globalAdminMinMonthYear));
+        const maxYear = getYearFromMMYYYY(globalServerCurrentMonthYear);
+        const maxMonth = parseInt(getMonthStrFromMMYYYY(globalServerCurrentMonthYear));
+        const currentSelectedYear = parseInt(selectedYear);
+        const currentSelectedMonth = parseInt(selectedMonth);
+
+        if (currentSelectedYear < minYear || (currentSelectedYear === minYear && currentSelectedMonth < minMonth)) {
+            showAlert(`Periode tidak valid. Minimum adalah ${globalAdminMinMonthYear}.`, "error");
+            return;
+        }
+        if (currentSelectedYear > maxYear || (currentSelectedYear === maxYear && currentSelectedMonth > maxMonth)) {
+            showAlert(`Periode tidak valid. Maksimum adalah ${globalServerCurrentMonthYear}.`, "error");
+            return;
+        }
+
+        if (!namaGuru) {
+            showAlert("Nama guru tidak diset. Tidak bisa memuat data.", "error"); return;
+        }
+        loadCeklokDataFromServer(namaGuru, newActiveMonthYear, loggedInUser.role === 'user');
+    }
+
+
+    function attachTimeInputValidationToCeklok() {
+        const inputs = document.querySelectorAll('#ceklokTableBody input[type="text"]');
+        inputs.forEach(input => {
+            input.oninput = () => clearInputError(input); // Hapus error saat mengetik
+            input.onblur = (e) => {
+                const v = e.target.value.trim();
+                clearInputError(input);
+                if (v && !isValidJamFormat(v)) {
+                    showInputError(input);
+                    showAlert('Format jam salah (HH.MM). Contoh: 07.30 atau 14.15.', 'error', 2000);
+                } else if (v) {
+                    e.target.value = normalizeJamFormat(v);
+                }
+            };
+        });
+    }
+
+    function attachKetLiburDropdownListeners() {
+        const dropdowns = document.querySelectorAll('.ket-libur-manual-dropdown');
+        dropdowns.forEach(dropdown => {
+            dropdown.onchange = function() {
+                const rowIndex = this.dataset.rowindex; // Ambil index baris dari data attribute
+                const jamMasukInput = document.getElementById(`jamMasuk${rowIndex}`);
+                const jamPulangInput = document.getElementById(`jamPulang${rowIndex}`);
+                const isKeteranganSelected = this.value !== ""; // Cek apakah ada keterangan yang dipilih
+
+                if (jamMasukInput) {
+                    jamMasukInput.disabled = isKeteranganSelected;
+                    if (isKeteranganSelected) jamMasukInput.value = ""; 
+                }
+                if (jamPulangInput) {
+                    jamPulangInput.disabled = isKeteranganSelected;
+                    if (isKeteranganSelected) jamPulangInput.value = "";
+                }
+            };
+        });
+    }
+
+    function submitCeklokData() {
+        let hasInvalidFormat = false;
+        const inputsToValidate = document.querySelectorAll('#ceklokTableBody input[type="text"]:not([disabled])');
+        inputsToValidate.forEach(input => { /* ... validasi jam ... */ });
+
+        if (hasInvalidFormat) { showAlert("Ada format jam yang salah. Perbaiki sebelum menyimpan.", 'error'); return; }
+
+        showLoading("Menyimpan data ceklok...");
+        const dataToSave = dataTanggal.map((row, i) => {
+            if (!row.isLibur) {
+                const jamMasukEl = document.getElementById(`jamMasuk${i}`);
+                const jamPulangEl = document.getElementById(`jamPulang${i}`);
+                const ketLiburManualEl = document.getElementById(`ketLiburManual${i}`);
+                let jamMasukVal = jamMasukEl ? jamMasukEl.value.trim() : '';
+                let jamPulangVal = jamPulangEl ? jamPulangEl.value.trim() : '';
+                const ketLiburManualVal = ketLiburManualEl ? ketLiburManualEl.value : '';
+                if (ketLiburManualVal && ketLiburManualVal !== "") {
+                    jamMasukVal = ""; jamPulangVal = "";
+                }
+                return { tanggal: row.tanggal, jamMasuk: jamMasukVal, jamPulang: jamPulangVal, keteranganLiburManual: ketLiburManualVal };
+            }
+            return null;
+        }).filter(item => item !== null);
+
+        if (!namaGuru || !activeCeklokMonthYear) { // Pastikan activeCeklokMonthYear ada
+            hideLoading();
+            showAlert("Error: Informasi guru atau periode bulan tidak lengkap untuk penyimpanan.", "error");
+            return;
+        }
+
+        google.script.run
+            .withSuccessHandler(msg => {
+                hideLoading();
+                const isError = String(msg).toLowerCase().startsWith("error:");
+                showAlert(msg, isError ? 'error' : 'success');
+                // Muat ulang data untuk bulan yang SAMA setelah simpan
+                loadCeklokDataFromServer(namaGuru, activeCeklokMonthYear, loggedInUser.role === 'user');
+            })
+            .withFailureHandler(err => { hideLoading(); showAlert(`Gagal menyimpan: ${err.message}`, 'error'); })
+            .simpanData(namaGuru, dataToSave); // simpanData di backend tidak perlu bulan/tahun eksplisit jika data individual sudah benar
+    }
+
+    // --- HASIL CEKLOK (REKAP) ---
+    function navigateToHasilCeklok() {
+        showLoading("Memuat hasil ceklok...");
+        google.script.run.withSuccessHandler(response => {
+            hideLoading();
+            if (response.error) { showAlert(`Error hasil ceklok: ${response.error}`, 'error'); return; }
+            renderView('hasil_ceklok', {
+                headers: response.headers,
+                data: response.data,
+                defaultMonthForRekap: activeCeklokMonthYear || globalServerCurrentMonthYear // Kirim bulan aktif atau default
+            });
+        }).withFailureHandler(err => { hideLoading(); showAlert(`Gagal memuat hasil ceklok: ${err.message}`, 'error'); })
+        .getCeklokHasil(); // Jika getCeklokHasil perlu parameter bulan, tambahkan di sini
+    }
+
+    // --- Setup untuk Halaman Hasil Ceklok Baru ---
+    function setupHasilCeklokView(data) { // data = { defaultMonthForRekap: "MM/YYYY" }
+        const rekapBulanSelectEl = document.getElementById('rekapBulanSelect'); // ID baru
+        const rekapTahunSelectEl = document.getElementById('rekapTahunSelect');   // ID baru
+        const rekapInfoBulanEl = document.getElementById('rekapInfoBulanTahun');
+        const rekapTableTheadEl = document.getElementById('rekapTableThead');
+        const rekapTableTbodyEl = document.getElementById('rekapTableTbody');
+
+        if (!rekapBulanSelectEl || !rekapTahunSelectEl || !rekapInfoBulanEl || !rekapTableTheadEl || !rekapTableTbodyEl) {
+            console.error("Elemen UI untuk rekap bulanan tidak ditemukan.");
+            showAlert("Gagal memuat komponen halaman rekap.", "error");
+            return;
+        }
+
+        const defaultRekapMonthYear = data.defaultMonthForRekap || activeCeklokMonthYear || globalServerCurrentMonthYear;
+        let defaultYear = getYearFromMMYYYY(defaultRekapMonthYear);
+        let defaultMonth = getMonthStrFromMMYYYY(defaultRekapMonthYear);
+
+        let minAllowedYear = getYearFromMMYYYY(globalAdminMinMonthYear);
+        let maxAllowedYear = getYearFromMMYYYY(globalServerCurrentMonthYear);
+
+        if (isNaN(minAllowedYear)) minAllowedYear = new Date().getFullYear() - 5;
+        if (isNaN(maxAllowedYear)) maxAllowedYear = new Date().getFullYear();
+        if (isNaN(defaultYear)) defaultYear = maxAllowedYear;
+        if (!defaultMonth || defaultMonth.length !== 2) defaultMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+
+
+        populateYearSelect('rekapTahunSelect', minAllowedYear, maxAllowedYear, defaultYear);
+        rekapBulanSelectEl.value = defaultMonth;
+
+        rekapTahunSelectEl.onchange = () => validateMonthRange('rekapBulanSelect', 'rekapTahunSelect');
+        rekapBulanSelectEl.onchange = () => validateMonthRange('rekapBulanSelect', 'rekapTahunSelect');
+        validateMonthRange('rekapBulanSelect', 'rekapTahunSelect');
+
+        rekapInfoBulanEl.textContent = "Belum dipilih";
+        rekapTableTheadEl.innerHTML = "";
+        rekapTableTbodyEl.innerHTML = `<tr><td colspan="1">Pilih bulan dan klik "Tampilkan Rekap" untuk melihat data.</td></tr>`;
+
+        window.scrollTo(0, 0);
+        // if (data.defaultMonthForRekap) {
+        //    loadMonthlyRekap(); // Anda bisa uncomment ini jika ingin langsung load
+        // }
+    }
+
+    function loadMonthlyRekap() {
+        const rekapBulanSelectEl = document.getElementById('rekapBulanSelect');
+        const rekapTahunSelectEl = document.getElementById('rekapTahunSelect');
+        const rekapInfoBulanEl = document.getElementById('rekapInfoBulanTahun');
+        const rekapTableTheadEl = document.getElementById('rekapTableThead');
+        const rekapTableTbodyEl = document.getElementById('rekapTableTbody');
+
+        if (!rekapBulanSelectEl || !rekapTahunSelectEl || !rekapInfoBulanEl || !rekapTableTheadEl || !rekapTableTbodyEl) {
+            showAlert("Komponen UI rekap tidak siap atau tidak ditemukan. Coba muat ulang halaman.", "error");
+            return;
+        }
+
+        const selectedMonth = rekapBulanSelectEl.value; // Format "MM"
+        const selectedYear = rekapTahunSelectEl.value;  // Format "YYYY"
+
+        if (!selectedMonth || !selectedYear) {
+            showAlert("Silakan pilih Bulan dan Tahun untuk ditampilkan pada rekapitulasi.", "warning");
+            return;
+        }
+        if (rekapBulanSelectEl.options[rekapBulanSelectEl.selectedIndex].disabled) {
+            showAlert("Bulan yang dipilih tidak valid untuk tahun ini. Silakan pilih bulan lain.", "warning");
+            return;
+        }
+
+        const selectedMonthYear = `${selectedMonth}/${selectedYear}`; // Format "MM/YYYY"
+
+        // Validasi client-side (sebenarnya sudah ditangani oleh validateMonthRange)
+        const minYear = getYearFromMMYYYY(globalAdminMinMonthYear);
+        const minMonth = parseInt(getMonthStrFromMMYYYY(globalAdminMinMonthYear));
+        const maxYear = getYearFromMMYYYY(globalServerCurrentMonthYear);
+        const maxMonth = parseInt(getMonthStrFromMMYYYY(globalServerCurrentMonthYear));
+        const currentSelectedYear = parseInt(selectedYear);
+        const currentSelectedMonth = parseInt(selectedMonth);
+
+        if (currentSelectedYear < minYear || (currentSelectedYear === minYear && currentSelectedMonth < minMonth)) {
+            showAlert(`Periode rekap tidak valid. Periode paling awal yang diizinkan adalah ${globalAdminMinMonthYear}.`, "error");
+            return;
+        }
+        if (currentSelectedYear > maxYear || (currentSelectedYear === maxYear && currentSelectedMonth > maxMonth)) {
+            showAlert(`Periode rekap tidak valid. Periode paling akhir yang diizinkan adalah ${globalServerCurrentMonthYear}.`, "error");
+            return;
+        }
+
+        showLoading(`Memuat rekapitulasi untuk periode ${selectedMonthYear}...`);
+        rekapInfoBulanEl.textContent = selectedMonthYear;
+        rekapTableTheadEl.innerHTML = "";
+        rekapTableTbodyEl.innerHTML = `<tr><td colspan="1" style="text-align:center; padding: 20px;">Memuat data rekapitulasi...</td></tr>`;
+
+        google.script.run
+            .withSuccessHandler(response => {
+                // ... (sisa kode untuk menghandle response di loadMonthlyRekap tetap sama) ...
+                hideLoading();
+                if (!response || !response.success) {
+                    const errorMsg = response.error || "Gagal memuat data rekapitulasi dari server.";
+                    showAlert(errorMsg, "error");
+                    rekapTableTheadEl.innerHTML = "";
+                    rekapTableTbodyEl.innerHTML = `<tr><td colspan="1" style="color:red; text-align:center; padding: 20px;">${errorMsg}</td></tr>`;
+                    return;
+                }
+
+                if (response.message) { // Pesan informatif dari backend, misal: "Tidak ada data guru"
+                    rekapTableTheadEl.innerHTML = `<tr><th style="text-align:center;">Informasi</th></tr>`;
+                    rekapTableTbodyEl.innerHTML = `<tr><td style="text-align:center; padding: 20px;">${response.message}</td></tr>`;
+                    return;
+                }
+
+                if (!response.daftarHeaderTanggal || response.daftarHeaderTanggal.length === 0) {
+                    rekapTableTheadEl.innerHTML = `<tr><th style="text-align:center;">Informasi</th></tr>`;
+                    rekapTableTbodyEl.innerHTML = `<tr><td style="text-align:center; padding: 20px;">Tidak ada data tanggal untuk periode ini.</td></tr>`;
+                    return;
+                }
+
+
+                // Bangun Header Tabel
+                let headerHtml = '<tr>';
+                headerHtml += '<th rowspan="2" style="vertical-align: middle; text-align:center; min-width: 150px; position: -webkit-sticky; position: sticky; left: 0; z-index: 3; background-color: var(--primary);">Nama Guru</th>';
+                response.daftarHeaderTanggal.forEach(tglAngka => {
+                    headerHtml += `<th class="rekap-tgl-header" style="text-align:center;">${tglAngka}</th>`;
+                });
+                headerHtml += '</tr>';
+                // Jika Anda ingin baris kedua untuk header tanggal (misal, nama hari), tambahkan di sini:
+                // headerHtml += '<tr>';
+                // response.daftarHeaderTanggal.forEach((tglAngka, index) => { // Asumsi index cocok dengan absensi
+                //     let namaHariUntukHeader = "";
+                //     // Cek apakah data guru dan absensi ada untuk mengambil nama hari
+                //     if (response.daftarGuru && response.daftarGuru.length > 0 && 
+                //         response.daftarGuru[0].absensi && response.daftarGuru[0].absensi[index]) {
+                //        namaHariUntukHeader = response.daftarGuru[0].absensi[index].namaHari.substring(0,3); // Misal "Sen"
+                //     }
+                //     headerHtml += `<th class="rekap-tgl-header-hari" style="text-align:center;">${namaHariUntukHeader}</th>`;
+                // });
+                // headerHtml += '</tr>';
+                rekapTableTheadEl.innerHTML = headerHtml;
+
+
+                // Bangun Badan Tabel
+                let tbodyHtml = '';
+                if (response.daftarGuru && response.daftarGuru.length > 0) {
+                    response.daftarGuru.forEach((guru, guruIndex) => {
+                        let trMasukClass = guruIndex > 0 ? "pemisah-guru-atas" : "";
+                        tbodyHtml += `<tr class="${trMasukClass}">`;
+                        // Pastikan menggunakan guru.nama karena itu yang dikirim dari backend
+                        tbodyHtml += `<td rowspan="2" class="rekap-nama-guru">${guru.nama}</td>`; 
+
+                        guru.absensi.forEach(absen => {
+                            // Gunakan absen.tanggalFullStr jika ada, fallback ke absen.tanggalFormatted
+                            const tooltipTanggal = absen.tanggalFullStr || absen.tanggalFormatted;
+                            tbodyHtml += `<td class="${absen.cssClass || ''}" title="Tgl: ${tooltipTanggal}, ${absen.namaHari}${absen.keterangan ? ' - ' + absen.keterangan : ''}">${absen.jamMasuk}</td>`;
+                        });
+                        tbodyHtml += `</tr>`;
+                        
+                        let trPulangClass = "pemisah-guru-bawah";
+                        tbodyHtml += `<tr class="${trPulangClass}">`; 
+                        guru.absensi.forEach(absen => {
+                            const tooltipTanggal = absen.tanggalFullStr || absen.tanggalFormatted;
+                            tbodyHtml += `<td class="${absen.cssClass || ''}" title="Tgl: ${tooltipTanggal}, ${absen.namaHari}${absen.keterangan ? ' - ' + absen.keterangan : ''}">${absen.jamPulang}</td>`;
+                        });
+                        tbodyHtml += `</tr>`;
+                    });
+                } else {
+                    const colspanCount = (response.daftarHeaderTanggal ? response.daftarHeaderTanggal.length : 0) + 1;
+                    tbodyHtml = `<tr><td colspan="${colspanCount}" style="text-align:center; padding: 20px;">Tidak ada data absensi guru untuk ditampilkan pada periode ini.</td></tr>`;
+                }
+                rekapTableTbodyEl.innerHTML = tbodyHtml;
+
+            })
+            .withFailureHandler(err => {
+                hideLoading();
+                showAlert(`Error server saat memuat rekapitulasi: ${err.message}`, "error");
+                rekapTableTheadEl.innerHTML = "";
+                rekapTableTbodyEl.innerHTML = `<tr><td colspan="1" style="color:red; text-align:center; padding: 20px;">Error server: ${err.message}</td></tr>`;
+            })
+            .getDynamicMonthlyRekap(selectedMonthYear);
+    }
+
+    function backToPreviousCeklokView() { // Kembali dari Hasil Ceklok atau Kalender
+        if (currentView === 'hasil_ceklok' || currentView === 'kalender_pendidikan') {
+            if (loggedInUser.role === 'user' || (loggedInUser.role === 'admin' && namaGuru)) {
+                // Jika kembali ke ceklok table, muat data untuk activeCeklokMonthYear
+                loadCeklokDataFromServer(namaGuru, activeCeklokMonthYear || globalServerCurrentMonthYear, loggedInUser.role === 'user');
+            } else if (loggedInUser.role === 'admin') {
+                goBackToAdminDashboard();
+            } else {
+                logout();
+            }
+        } else {
+            // Default fallback jika currentView tidak dikenali
+            if (loggedInUser.role === 'admin') goBackToAdminDashboard();
+            else if (loggedInUser.role === 'user') logout(); // Atau kembali ke ceklok table jika state memungkinkan
+            else logout();
+        }
+    }
+
+    function handleDownloadPDF() { // Dipanggil dari onclick
+        showLoading("Membuat PDF...");
+        google.script.run
+            .withSuccessHandler(response => {
+                hideLoading();
+                if (response.error) showAlert(`Gagal PDF: ${response.error}`, 'error');
+                else if (response && typeof response === 'string' && response.startsWith('http')) window.open(response, '_blank');
+                else showAlert("URL PDF tidak valid.", 'error');
+            })
+            .withFailureHandler(err => { hideLoading(); showAlert(`Gagal PDF: ${err.message}`, 'error'); })
+            .downloadPDF();
+    }
+
+    // --- KALENDER PENDIDIKAN ---
+    function navigateToKalenderForm() { renderView('kalender_pendidikan'); }
+
+    function setupKalenderPendidikanView() {
+        loadAndDisplayKalenderEntries(); // Fungsi ini akan mengisi tabel di kalender_pendidikan_content.html
+        // Event listener untuk form tambah sudah via onclick di HTML parsial
+        window.scrollTo(0,0);
+    }
+
+    function loadAndDisplayKalenderEntries() {
+        showLoading("Memuat entri kalender...");
+        google.script.run
+            .withSuccessHandler(response => { // response adalah array of entries atau {error: ...}
+                hideLoading();
+                const container = document.getElementById('existingKalenderEntriesTableBody'); // Dari kalender_pendidikan_content.html
+                if (!container) return;
+                if (response.error) { container.innerHTML = `<tr><td colspan="3" style="color:red;">Error: ${response.error}</td></tr>`; return; }
+                
+                const entries = response; // Ini array
+                if (!entries || entries.length === 0) { container.innerHTML = `<tr><td colspan="3">Belum ada data di Kalender Pendidikan.</td></tr>`; return; }
+                
+                let tableHtml = '';
+                entries.forEach(entry => {
+                    tableHtml += `<tr>
+                        <td data-label="Tanggal">${entry.date || '-'}</td>
+                        <td data-label="Keterangan">${entry.description || '-'}</td>
+                        <td data-label="Aksi" class="actions-cell"><button class="btn-danger" onclick="confirmDeleteKalenderEntry(${entry.sheetRow})">Hapus</button></td>
+                    </tr>`;
+                });
+                container.innerHTML = tableHtml;
+            })
+            .withFailureHandler(err => {
+                hideLoading();
+                const container = document.getElementById('existingKalenderEntriesTableBody');
+                if(container) container.innerHTML = `<tr><td colspan="3" style="color:red;">Gagal memuat Kalender: ${err.message}</td></tr>`;
+            })
+            .getKalenderPendidikanEntries();
+    }
+
+    function submitNewKalenderEntry() { // Dipanggil dari onclick
+        const dateInputEl = document.getElementById('kalenderDate');
+        const descriptionEl = document.getElementById('kalenderDescription');
+        clearInputError(dateInputEl, descriptionEl);
+
+        const dateInputVal = dateInputEl.value; 
+        const description = descriptionEl.value.trim();
+
+        if (!dateInputVal) { showAlert("Tanggal wajib.", 'error'); showInputError(dateInputEl); return; } 
+        if (!description) { showAlert("Keterangan wajib.", 'error'); showInputError(descriptionEl); return; } 
+
+        const parts = dateInputVal.split('-'); // Format dari input type="date" adalah yyyy-mm-dd
+        const formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`; // Konversi ke dd/mm/yyyy
+
+        showLoading("Menyimpan entri kalender...");
+        google.script.run
+            .withSuccessHandler(response => { // response = {success: true/false, message/error: "..."}
+                hideLoading();
+                showAlert(response.message || response.error, response.success ? 'success' : 'error');
+                if (response.success) {
+                    if(dateInputEl) dateInputEl.value = '';
+                    if(descriptionEl) descriptionEl.value = '';
+                    loadAndDisplayKalenderEntries(); 
+                }
+            })
+            .withFailureHandler(err => { hideLoading(); showAlert(`Gagal menambah entri: ${err.message}`, 'error'); })
+            .addKalenderPendidikanEntry({ date: formattedDate, description: description });
+    }
+
+    function confirmDeleteKalenderEntry(sheetRow) {
+        if (confirm("Yakin ingin menghapus entri Kalender ini?")) {
+            showLoading("Menghapus entri...");
+            google.script.run
+                .withSuccessHandler(response => {
+                    hideLoading();
+                    showAlert(response.message || response.error, response.success ? 'success' : 'error');
+                    if (response.success) loadAndDisplayKalenderEntries();
+                })
+                .withFailureHandler(err => { hideLoading(); showAlert(`Gagal menghapus: ${err.message}`, 'error'); })
+                .deleteKalenderPendidikanEntry(sheetRow);
+        }
+    }
+    
+    // --- MANAJEMEN PENGGUNA (ADMIN) ---
+    function navigateToUserManagement() { renderView('user_management'); }
+
+    function setupUserManagementView() {
+        showLoading("Memuat data...");
+        google.script.run
+            .withSuccessHandler(teacherData => {
+                allTeachersList = teacherData.success ? (teacherData.teachers || []) : [];
+                if (!teacherData.success) showAlert(`Gagal memuat daftar guru untuk form: ${teacherData.error || "Error"}`, 'warning');
+                
+                google.script.run
+                    .withSuccessHandler(userResponse => {
+                        hideLoading();
+                        if (userResponse.success) renderUserListTable(userResponse.users);
+                        else {
+                            const container = document.getElementById('userListTableContainer'); // Dari user_management_content.html
+                            if(container) container.innerHTML = `<p style="color:red;">Error: ${userResponse.error}</p>`;
+                            showAlert(userResponse.error, 'error');
+                        }
+                        populateTeacherDropdownForUserForm(); // Panggil setelah tabel dan form ada
+                        toggleManageTeacherNameInput(document.getElementById('manageUserRole').value); // ID dari user_management_content.html
+                        cancelEditUserForm(); // Reset form
+                    })
+                    .withFailureHandler(err => { hideLoading(); showAlert(`Gagal memuat pengguna: ${err.message}`, 'error'); })
+                    .getUsersForAdmin();
+            })
+            .withFailureHandler(err => { 
+                hideLoading(); 
+                allTeachersList = [];
+                showAlert(`Gagal memuat daftar guru: ${err.message}`, 'error');
+                // Tetap coba render user management
+                 google.script.run
+                    .withSuccessHandler(userResponse => { /* ... */ })
+                    .withFailureHandler(err => { /* ... */ })
+                    .getUsersForAdmin();
+            })
+            .getTeachersForAdmin(); // Ambil daftar guru DULU
+        window.scrollTo(0,0);
+    }
+
+    function populateTeacherDropdownForUserForm(selectedTeacher = "") {
+        const dropdown = document.getElementById('manageUserActualTeacherNameDropdown'); // Dari user_management_content.html
+        const textInput = document.getElementById('manageUserActualTeacherNameInput'); 
+        if (!dropdown || !textInput) return;
+
+        if (allTeachersList && allTeachersList.length > 0) {
+            dropdown.style.display = 'block'; textInput.style.display = 'none';
+            dropdown.innerHTML = '<option value="">-- Pilih Nama Guru --</option>';
+            allTeachersList.forEach(teacher => {
+                const option = document.createElement('option');
+                option.value = teacher; option.textContent = teacher;
+                if (teacher === selectedTeacher) option.selected = true;
+                dropdown.appendChild(option);
+            });
+            if(selectedTeacher) dropdown.value = selectedTeacher;
+
+        } else {
+            dropdown.style.display = 'none'; textInput.style.display = 'block';
+            textInput.value = selectedTeacher;
+        }
+    }
+
+    function toggleManageTeacherNameInput(role) { // Untuk form user management
+        const group = document.getElementById('manageUserTeacherNameGroup'); // Dari user_management_content.html
+        const dropdown = document.getElementById('manageUserActualTeacherNameDropdown');
+        const textInput = document.getElementById('manageUserActualTeacherNameInput');
+        if (group) group.style.display = (role === 'user') ? 'block' : 'none';
+        
+        // Panggil populate lagi untuk memastikan input/dropdown yang benar terlihat
+        if (role === 'user' && (dropdown || textInput)) {
+            const currentTeacher = dropdown && dropdown.style.display !== 'none' ? dropdown.value : (textInput ? textInput.value : '');
+            populateTeacherDropdownForUserForm(currentTeacher);
+        }
+    }
+
+    function renderUserListTable(users) {
+        const container = document.getElementById('userListTableBody'); // Dari user_management_content.html
+        if (!container) return;
+        let tableHtml = '';
+        if (users && users.length > 0) {
+            users.forEach(user => {
+                tableHtml += `<tr>
+                    <td data-label="Username">${user.username}</td>
+                    <td data-label="Role">${user.role}</td>
+                    <td data-label="Nama Guru Asli">${user.teacherName || '-'}</td>
+                    <td data-label="Aksi" class="actions-cell">
+                        <button class="btn-warning" onclick="prepareEditUserForm('${user.username}', '${user.role}', '${user.teacherName || ''}')">Edit</button>
+                        ${loggedInUser && loggedInUser.username !== user.username ? `<button class="btn-danger" onclick="confirmDeleteUser('${user.username}')">Hapus</button>` : ''}
+                    </td></tr>`;
+            });
+        } else {
+            tableHtml += `<tr><td colspan="4">Tidak ada pengguna.</td></tr>`;
+        }
+        container.innerHTML = tableHtml;
+    }
+
+    function prepareEditUserForm(username, role, teacherName) {
+        document.getElementById('userFormTitle').textContent = 'Edit Pengguna: ' + username;
+        document.getElementById('editUsernameKey').value = username; // Hidden input
+        document.getElementById('manageUsernameInput').value = username; // Dari user_management_content.html
+        document.getElementById('manageUsernameInput').readOnly = true;
+        document.getElementById('manageUserPasswordInput').value = '';
+        document.getElementById('manageUserPasswordInput').placeholder = 'Kosongkan jika tidak ubah password';
+        document.getElementById('manageUserRole').value = role;
+        
+        toggleManageTeacherNameInput(role); // Atur visibilitas field nama guru
+        // Isi dropdown atau text input nama guru
+        const teacherDropdown = document.getElementById('manageUserActualTeacherNameDropdown');
+        const teacherTextInput = document.getElementById('manageUserActualTeacherNameInput');
+        if (role === 'user') {
+            if (teacherDropdown && teacherDropdown.style.display !== 'none') {
+                teacherDropdown.value = teacherName;
+            } else if (teacherTextInput) {
+                teacherTextInput.value = teacherName;
+            }
+        } else {
+            if (teacherDropdown) teacherDropdown.value = '';
+            if (teacherTextInput) teacherTextInput.value = '';
+        }
+        
+        document.getElementById('btnSaveUser').textContent = 'Update Pengguna'; // Dari user_management_content.html
+        document.getElementById('btnCancelEditUser').style.display = 'inline-block'; // Dari user_management_content.html
+        clearInlineError('userFormErrorGlobal'); // Dari user_management_content.html
+        window.scrollTo(0, document.getElementById('userFormTitle').offsetTop);
+    }
+
+    function cancelEditUserForm() { // Dipanggil dari onclick btnCancelEditUser
+        document.getElementById('userFormTitle').textContent = 'Tambah Pengguna Baru';
+        document.getElementById('editUsernameKey').value = '';
+        const usernameInput = document.getElementById('manageUsernameInput');
+        if(usernameInput) { usernameInput.value = ''; usernameInput.readOnly = false; }
+        const passwordInput = document.getElementById('manageUserPasswordInput');
+        if(passwordInput) { passwordInput.value = ''; passwordInput.placeholder = 'Password baru/awal'; }
+        const roleSelect = document.getElementById('manageUserRole');
+        if(roleSelect) roleSelect.value = 'user';
+        
+        const teacherDropdown = document.getElementById('manageUserActualTeacherNameDropdown');
+        if(teacherDropdown) teacherDropdown.value = '';
+        const teacherTextInput = document.getElementById('manageUserActualTeacherNameInput');
+        if(teacherTextInput) teacherTextInput.value = '';
+
+        toggleManageTeacherNameInput('user');
+        
+        const saveBtn = document.getElementById('btnSaveUser');
+        if(saveBtn) saveBtn.textContent = 'Simpan Pengguna';
+        const cancelBtn = document.getElementById('btnCancelEditUser');
+        if(cancelBtn) cancelBtn.style.display = 'none';
+        clearInlineError('userFormErrorGlobal');
+    }
+
+    function handleSaveUser() { // Dipanggil dari onclick btnSaveUser
+        const editUsernameKey = document.getElementById('editUsernameKey').value;
+        const isEditMode = !!editUsernameKey;
+
+        const usernameEl = document.getElementById('manageUsernameInput');
+        const passwordEl = document.getElementById('manageUserPasswordInput');
+        const roleEl = document.getElementById('manageUserRole');
+        const teacherDropdownEl = document.getElementById('manageUserActualTeacherNameDropdown');
+        const teacherInputEl = document.getElementById('manageUserActualTeacherNameInput');
+        const errorContainerId = 'userFormErrorGlobal';
+        clearInlineError(errorContainerId);
+        clearInputError(usernameEl, passwordEl, roleEl, teacherDropdownEl, teacherInputEl);
+
+        const username = usernameEl.value.trim();
+        const password = passwordEl.value; // Jangan .trim()
+        const role = roleEl.value;
+        let teacherName = "";
+        if (role === 'user') {
+            teacherName = (teacherDropdownEl && teacherDropdownEl.style.display !== 'none') ? teacherDropdownEl.value : teacherInputEl.value.trim();
+        }
+
+        if (!username) { showInlineError(errorContainerId, "Username wajib."); showInputError(usernameEl); return; }
+        if (!isEditMode && !password) { showInlineError(errorContainerId, "Password wajib untuk user baru."); showInputError(passwordEl);return; }
+        if (password && password.length < 4 && (isEditMode && password || !isEditMode) ) { // Validasi jika password diisi
+            showInlineError(errorContainerId, "Password minimal 4 karakter."); showInputError(passwordEl); return;
+        }
+        if (role === 'user' && !teacherName) {
+            showInlineError(errorContainerId, "Nama Guru Asli wajib untuk role 'user'.");
+            if(teacherDropdownEl && teacherDropdownEl.style.display !== 'none') showInputError(teacherDropdownEl); else showInputError(teacherInputEl);
+            return;
+        }
+
+        showLoading(isEditMode ? "Memperbarui..." : "Menambahkan...");
+        if (isEditMode) {
+            const userDataToUpdate = { newRole: role, newTeacherName: teacherName };
+            if (password) userDataToUpdate.newPassword = password; // Hanya kirim jika diisi
+            google.script.run.withSuccessHandler(response => {
+                hideLoading(); showAlert(response.message || response.error, response.success ? 'success' : 'error');
+                if (response.success) { cancelEditUserForm(); setupUserManagementView(); /* Refresh */ }
+            }).withFailureHandler(err => { hideLoading(); showAlert(`Update gagal: ${err.message}`, 'error'); })
+            .updateUserByUsername(editUsernameKey, userDataToUpdate);
+        } else {
+            const newUser = { username, password, role, teacherName };
+            google.script.run.withSuccessHandler(response => {
+                hideLoading(); showAlert(response.message || response.error, response.success ? 'success' : 'error');
+                if (response.success) { cancelEditUserForm(); setupUserManagementView(); /* Refresh */ }
+            }).withFailureHandler(err => { hideLoading(); showAlert(`Tambah gagal: ${err.message}`, 'error'); })
+            .addNewUser(newUser);
+        }
+    }
+
+    function confirmDeleteUser(username) {
+        if (username === loggedInUser.username) { showAlert("Tidak bisa menghapus akun sendiri.", 'error'); return; }
+        if (confirm(`Yakin hapus pengguna '${username}'?`)) {
+            showLoading("Menghapus pengguna...");
+            google.script.run.withSuccessHandler(response => {
+                hideLoading(); showAlert(response.message || response.error, response.success ? 'success' : 'error');
+                if (response.success) setupUserManagementView(); /* Refresh */
+            }).withFailureHandler(err => { hideLoading(); showAlert(`Hapus gagal: ${err.message}`, 'error'); })
+            .deleteUserByUsername(username);
+        }
+    }
+
+    // --- MANAJEMEN GURU (ADMIN) ---
+    function navigateToTeacherManagement() { renderView('teacher_management'); }
+
+    function setupTeacherManagementView() {
+        showLoading("Memuat data guru...");
+        google.script.run
+            .withSuccessHandler(response => {
+                hideLoading();
+                if (response.success) {
+                    allTeachersList = response.teachers || [];
+                    renderTeacherListTable(allTeachersList);
+                } else {
+                    const container = document.getElementById('teacherListTableContainer'); // Dari teacher_management_content.html
+                    if(container) container.innerHTML = `<p style="color:red;">Error: ${response.error}</p>`;
+                    showAlert(response.error, 'error');
+                }
+                cancelEditTeacherForm(); // Reset form
+            })
+            .withFailureHandler(err => { hideLoading(); showAlert(`Gagal memuat guru: ${err.message}`, 'error'); })
+            .getTeachersForAdmin();
+        window.scrollTo(0,0);
+    }
+
+    function renderTeacherListTable(teachers) {
+        const container = document.getElementById('teacherListTableBody'); // Dari teacher_management_content.html
+        if (!container) return;
+        let tableHtml = '';
+        if (teachers && teachers.length > 0) {
+            teachers.forEach(teacher => {
+                tableHtml += `<tr>
+                    <td data-label="Nama Guru">${teacher}</td>
+                    <td data-label="Aksi" class="actions-cell">
+                        <button class="btn-warning" onclick="prepareEditTeacherForm('${teacher}')">Edit</button>
+                        <button class="btn-danger" onclick="confirmDeleteTeacher('${teacher}')">Hapus</button>
+                    </td></tr>`;
+            });
+        } else {
+            tableHtml += `<tr><td colspan="2">Belum ada nama guru.</td></tr>`;
+        }
+        container.innerHTML = tableHtml;
+    }
+
+    function prepareEditTeacherForm(teacherName) {
+        document.getElementById('teacherFormTitle').textContent = 'Edit Nama Guru'; // Dari teacher_management_content.html
+        document.getElementById('editTeacherNameKey').value = teacherName;
+        document.getElementById('manageTeacherNameInput').value = teacherName; // Dari teacher_management_content.html
+        document.getElementById('btnSaveTeacher').textContent = 'Update Nama Guru'; // Dari teacher_management_content.html
+        document.getElementById('btnCancelEditTeacher').style.display = 'inline-block'; // Dari teacher_management_content.html
+        clearInlineError('teacherFormErrorGlobal'); // Dari teacher_management_content.html
+        window.scrollTo(0, document.getElementById('teacherFormTitle').offsetTop);
+    }
+
+    function cancelEditTeacherForm() { // Dipanggil dari onclick btnCancelEditTeacher
+        document.getElementById('teacherFormTitle').textContent = 'Tambah Nama Guru Baru';
+        document.getElementById('editTeacherNameKey').value = '';
+        const nameInput = document.getElementById('manageTeacherNameInput');
+        if(nameInput) nameInput.value = '';
+        const saveBtn = document.getElementById('btnSaveTeacher');
+        if(saveBtn) saveBtn.textContent = 'Simpan Nama Guru';
+        const cancelBtn = document.getElementById('btnCancelEditTeacher');
+        if(cancelBtn) cancelBtn.style.display = 'none';
+        clearInlineError('teacherFormErrorGlobal');
+    }
+
+    function handleSaveTeacher() { // Dipanggil dari onclick btnSaveTeacher
+        const editTeacherNameKey = document.getElementById('editTeacherNameKey').value;
+        const isEditMode = !!editTeacherNameKey;
+        const teacherNameEl = document.getElementById('manageTeacherNameInput');
+        const teacherName = teacherNameEl.value.trim();
+        const errorContainerId = 'teacherFormErrorGlobal';
+        clearInlineError(errorContainerId); clearInputError(teacherNameEl);
+
+        if (!teacherName) { showInlineError(errorContainerId, "Nama guru wajib."); showInputError(teacherNameEl); return; }
+
+        showLoading(isEditMode ? "Memperbarui..." : "Menambahkan...");
+        if (isEditMode) {
+            if (editTeacherNameKey === teacherName) { hideLoading(); showInlineError(errorContainerId, "Nama baru sama dengan nama lama."); return; }
+            google.script.run.withSuccessHandler(response => {
+                hideLoading(); showAlert(response.message || response.error, response.success ? 'success' : 'error');
+                if (response.success) { cancelEditTeacherForm(); setupTeacherManagementView(); /* Refresh */ }
+            }).withFailureHandler(err => { hideLoading(); showAlert(`Update gagal: ${err.message}`, 'error'); })
+            .updateTeacherByName(editTeacherNameKey, teacherName);
+        } else {
+            google.script.run.withSuccessHandler(response => {
+                hideLoading(); showAlert(response.message || response.error, response.success ? 'success' : 'error');
+                if (response.success) { cancelEditTeacherForm(); setupTeacherManagementView(); /* Refresh */ }
+            }).withFailureHandler(err => { hideLoading(); showAlert(`Tambah gagal: ${err.message}`, 'error'); })
+            .addNewTeacher(teacherName);
+        }
+    }
+
+    function confirmDeleteTeacher(teacherName) {
+        if (confirm(`Yakin hapus nama guru '${teacherName}'? Ini juga bisa mempengaruhi akun user yang terhubung.`)) {
+            showLoading("Menghapus nama guru...");
+            google.script.run.withSuccessHandler(response => {
+                hideLoading(); showAlert(response.message || response.error, response.success ? 'success' : 'error');
+                if (response.success) setupTeacherManagementView(); /* Refresh */
+            }).withFailureHandler(err => { hideLoading(); showAlert(`Hapus gagal: ${err.message}`, 'error'); })
+            .deleteTeacherByName(teacherName);
+        }
+    }
+
+    // --- Inisialisasi Aplikasi ---
+    function updateFooterYear() {
+        const yearEl = document.getElementById('currentYear');
+        if (yearEl) yearEl.textContent = new Date().getFullYear();
+    }
+
+    window.onload = function() {
+        console.log("Page loaded. Checking for existing session...");
+        document.getElementById('app').innerHTML = '';
+        updateFooterYear();
+
+        const storedUserData = sessionStorage.getItem('loggedInUserData');
+        if (storedUserData) {
+            console.log("Found user data in sessionStorage.");
+            try {
+                loggedInUser = JSON.parse(storedUserData);
+                if (loggedInUser && loggedInUser.username && loggedInUser.role) {
+                    console.log("User data parsed successfully. Proceeding...");
+                    proceedAfterLogin(); // Ini akan memicu pengambilan setting tanggal juga
+                } else {
+                    console.warn("Stored user data is invalid. Clearing session.");
+                    sessionStorage.removeItem('loggedInUserData');
+                    renderView('login');
+                }
+            } catch (e) {
+                console.error("Failed to parse stored user data:", e);
+                sessionStorage.removeItem('loggedInUserData');
+                renderView('login');
+            }
+        } else {
+            console.log("No user data in sessionStorage. Rendering login view.");
+            renderView('login');
+        }
+    };
+
+    // Panggil fungsi ini di dalam setupCeklokTableView setelah elemen HTML dimuat
+    function setupLockIdAndExportClientFeatures() {
+        const lockIdInput = document.getElementById('lockIdInput');
+        const btnSimpanLockId = document.getElementById('btnSimpanLockIdClient');
+        const btnExportExcel = document.getElementById('btnExportExcelClient');
+        const lockIdStatusMsg = document.getElementById('lockIdStatusMessage');
+
+        if (lockIdInput) {
+            lockIdInput.addEventListener('input', function() {
+                // Saat pengguna mengetik LOCK_ID baru, reset status tombol export
+                if (btnExportExcel) {
+                    btnExportExcel.disabled = true;
+                    btnExportExcel.classList.remove('btn-ready-export');
+                    btnExportExcel.classList.add('btn-greyed-out');
+                }
+                if (lockIdStatusMsg) lockIdStatusMsg.textContent = '';
+                currentLockIdValue = null; // Reset LOCK_ID yang tersimpan di klien
+                currentBackupSheetName = null;
+            });
+        }
+        // Event listener untuk tombol sudah diatur via onclick di HTML-nya
+    }
+
+    function handleSimpanLockIdClientSite() {
+        const lockIdInputEl = document.getElementById('lockIdInput');
+        const btnExportExcel = document.getElementById('btnExportExcelClient');
+        const lockIdStatusMsg = document.getElementById('lockIdStatusMessage');
+
+        // Periksa apakah elemen UI penting ada
+        if (!lockIdInputEl || !btnExportExcel || !lockIdStatusMsg) {
+            showAlert("Komponen UI untuk LOCK_ID tidak ditemukan pada halaman. Coba muat ulang.", "error");
+            return;
+        }
+
+        const lockIdValue = lockIdInputEl.value.trim();
+        if (!lockIdValue) {
+            showAlert("LOCK_ID tidak boleh kosong.", "error");
+            lockIdInputEl.focus();
+            return;
+        }
+        if (isNaN(parseInt(lockIdValue))) {
+            showAlert("LOCK_ID harus berupa angka.", "error");
+            lockIdInputEl.focus();
+            return;
+        }
+
+        // Validasi bahwa variabel global yang dibutuhkan sudah ada
+        if (!namaGuru) {
+            showAlert("Nama guru belum dipilih atau tidak valid. Silakan pilih guru terlebih dahulu.", "error");
+            return;
+        }
+        if (!activeCeklokMonthYear) {
+            showAlert("Periode bulan dan tahun belum aktif. Silakan muat data ceklok untuk periode yang diinginkan terlebih dahulu.", "error");
+            return;
+        }
+        if (!dataTanggal || dataTanggal.length === 0) {
+            showAlert("Tidak ada data ceklok yang dimuat untuk periode saat ini (" + activeCeklokMonthYear + "). Silakan muat data terlebih dahulu sebelum menyimpan LOCK_ID.", "warning");
+            return;
+        }
+
+        // Kumpulkan data ceklok saat ini dari variabel 'dataTanggal'.
+        // 'dataTanggal' harus sudah merefleksikan data untuk 'activeCeklokMonthYear'.
+        const currentCeklokDataForBackup = dataTanggal.map((row, i) => {
+            let jamMasukVal = '';
+            let jamPulangVal = '';
+            let ketValForBackup = ''; // Ini yang akan mengisi kolom Keterangan Libur 1 & 2 di backup sheet
+
+            if (row.isLibur) { // Hari libur berdasarkan Kalender Pendidikan atau hari Minggu
+                jamMasukVal = "";
+                jamPulangVal = "";
+                // Untuk EMIS, jika hari libur, keterangan libur manual (jika ada) tetap bisa relevan
+                // namun jam masuk dan pulang harus kosong.
+                ketValForBackup = row.keteranganLiburManual || ""; // Ambil keterangan manual yang mungkin sudah tersimpan
+            } else { // Hari kerja biasa
+                // Ambil nilai dari input form di tabel UI.
+                const jamMasukEl = document.getElementById(`jamMasuk${i}`);
+                const jamPulangEl = document.getElementById(`jamPulang${i}`);
+                const ketLiburManualEl = document.getElementById(`ketLiburManual${i}`); // Ini adalah dropdown "Opsi Keterangan Libur" di UI
+
+                jamMasukVal = jamMasukEl ? jamMasukEl.value.trim() : '';
+                jamPulangVal = jamPulangEl ? jamPulangEl.value.trim() : '';
+                ketValForBackup = ketLiburManualEl ? ketLiburManualEl.value : ''; // Ambil dari pilihan dropdown di UI
+
+                // Jika pengguna memilih alasan tidak hadir dari dropdown untuk hari kerja,
+                // maka jam masuk dan pulang harus dikosongkan.
+                if (ketValForBackup && ketValForBackup !== "") {
+                    jamMasukVal = "";
+                    jamPulangVal = "";
+                }
+            }
+
+            return {
+                tanggal: row.tanggal, // Format: dd/MM/yyyy (dari dataTanggal)
+                hari: row.hari,
+                jamMasuk: jamMasukVal,
+                jamPulang: jamPulangVal,
+                keteranganLiburManual: ketValForBackup // Nilai ini yang akan dikirim ke server
+            };
+        });
+
+        showLoading("Menyimpan LOCK_ID & menyiapkan data export untuk periode " + activeCeklokMonthYear + "...");
+        google.script.run
+            .withSuccessHandler(response => {
+                hideLoading();
+                if (response.success) {
+                    showAlert(response.message || "LOCK_ID berhasil disimpan dan data disiapkan.", "success");
+                    lockIdStatusMsg.textContent = `LOCK_ID '${lockIdValue}' aktif untuk periode ${activeCeklokMonthYear}. Sheet cadangan: ${response.backupSheetName}. Siap export.`;
+                    lockIdStatusMsg.style.color = "green";
+                    btnExportExcel.disabled = false;
+                    btnExportExcel.classList.remove('btn-greyed-out');
+                    btnExportExcel.classList.add('btn-ready-export');
+                    currentLockIdValue = lockIdValue; // Simpan LOCK_ID yang berhasil disimpan
+                    currentBackupSheetName = response.backupSheetName; // Simpan nama sheet cadangan
+                } else {
+                    showAlert(response.error || "Gagal menyimpan LOCK_ID.", "error");
+                    lockIdStatusMsg.textContent = response.error || "Gagal memproses.";
+                    lockIdStatusMsg.style.color = "red";
+                    btnExportExcel.disabled = true;
+                    btnExportExcel.classList.add('btn-greyed-out');
+                    btnExportExcel.classList.remove('btn-ready-export');
+                }
+            })
+            .withFailureHandler(err => {
+                hideLoading();
+                showAlert(`Error server saat menyimpan LOCK_ID: ${err.message}`, "error");
+                lockIdStatusMsg.textContent = `Error server: ${err.message}`;
+                lockIdStatusMsg.style.color = "red";
+                btnExportExcel.disabled = true;
+                btnExportExcel.classList.add('btn-greyed-out');
+                btnExportExcel.classList.remove('btn-ready-export');
+            })
+            // Mengirim namaGuru, activeCeklokMonthYear (sebagai bulanTahun), lockIdValue, dan data yang sudah diproses
+            .saveLockIdAndPrepareBackupSheet(namaGuru, activeCeklokMonthYear, lockIdValue, currentCeklokDataForBackup);
+    }
+
+    function handleExportExcelClientSite() {
+        const btnExportExcel = document.getElementById('btnExportExcelClient');
+        const lockIdInputEl = document.getElementById('lockIdInput');
+        const lockIdStatusMsg = document.getElementById('lockIdStatusMessage');
+
+        // Periksa apakah elemen UI penting ada
+        if (!btnExportExcel || !lockIdInputEl || !lockIdStatusMsg) {
+            showAlert("Komponen UI untuk export tidak ditemukan pada halaman. Coba muat ulang.", "error");
+            return;
+        }
+
+        if (!currentBackupSheetName || !currentLockIdValue) {
+            showAlert("LOCK_ID belum disimpan atau sheet cadangan belum siap. Klik 'Simpan LOCK_ID' dahulu.", "error");
+            return;
+        }
+        // Pastikan namaGuru dan activeCeklokMonthYear juga ada untuk penamaan file dan referensi
+        if (!namaGuru) {
+            showAlert("Nama guru belum dipilih atau tidak valid.", "error");
+            return;
+        }
+        if (!activeCeklokMonthYear) {
+            showAlert("Periode bulan dan tahun aktif tidak ditemukan. Silakan muat data ceklok terlebih dahulu.", "error");
+            return;
+        }
+
+        if (btnExportExcel.disabled) {
+            showAlert("Tombol export belum aktif. Pastikan LOCK_ID sudah disimpan dengan benar.", "warning");
+            return;
+        }
+
+        showLoading("Mengekspor data dari sheet cadangan untuk periode " + activeCeklokMonthYear + "...");
+        google.script.run
+            .withSuccessHandler(response => {
+                hideLoading();
+                if (response.success && response.base64Data && response.fileName && response.mimeType) {
+                    triggerClientSideDownload(response.base64Data, response.fileName, response.mimeType);
+                    showAlert("Export Excel berhasil dimulai. File: " + response.fileName, "success", 5000); // Tampilkan nama file
+                    
+                    // Reset setelah export berhasil
+                    lockIdInputEl.value = ''; // Kosongkan input LOCK_ID
+                    lockIdStatusMsg.textContent = "Export selesai. Sheet cadangan akan segera dihapus oleh server.";
+                    lockIdStatusMsg.style.color = "var(--grey-text)"; // Warna netral
+                    btnExportExcel.disabled = true;
+                    btnExportExcel.classList.remove('btn-ready-export');
+                    btnExportExcel.classList.add('btn-greyed-out');
+                    
+                    currentLockIdValue = null; // Reset LOCK_ID yang tersimpan di klien
+                    currentBackupSheetName = null; // Reset nama sheet cadangan yang aktif
+                } else {
+                    showAlert(response.error || "Gagal mengekspor data.", "error");
+                    lockIdStatusMsg.textContent = response.error || "Gagal mengekspor.";
+                    lockIdStatusMsg.style.color = "red";
+                }
+            })
+            .withFailureHandler(err => {
+                hideLoading();
+                showAlert(`Error server saat export: ${err.message}`, "error");
+                if (lockIdStatusMsg) { // Periksa null jika elemen mungkin tidak ada
+                    lockIdStatusMsg.textContent = `Error server export: ${err.message}`;
+                    lockIdStatusMsg.style.color = "red";
+                }
+            })
+            // Mengirim currentBackupSheetName, namaGuru, activeCeklokMonthYear (sebagai bulanTahun), dan currentLockIdValue
+            .exportBackupSheetToExcel(currentBackupSheetName, namaGuru, activeCeklokMonthYear, currentLockIdValue);
+    }
+
+    // Fungsi triggerClientSideDownload (jika belum ada atau untuk kelengkapan):
+    function triggerClientSideDownload(base64Data, fileName, mimeType) {
+      try {
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: mimeType });
+
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+
+        // Pesan sukses sudah ditangani di handleExportExcelClientSite
+      } catch (e) {
+        console.error("Error saat memicu unduhan di browser:", e);
+        showAlert("Gagal memulai unduhan di browser. Periksa konsol untuk detail.", "error");
+      }
+    }
+
+    function openChangePasswordModal() {
+        clearInlineError('changePasswordError');
+      document.getElementById('currentPassword').value = '';
+      document.getElementById('newPassword').value = '';
+      document.getElementById('confirmNewPassword').value = '';
+      document.getElementById('changePasswordModal').style.display = 'block';
+      }
+
+    function closeChangePasswordModal() {
+        document.getElementById('changePasswordModal').style.display = 'none';
+    }
+
+    function submitChangePassword() {
+        const currentPasswordEl = document.getElementById('currentPassword');
+        const newPasswordEl = document.getElementById('newPassword');
+        const confirmNewPasswordEl = document.getElementById('confirmNewPassword');
+        const errorContainerId = 'changePasswordError';
+
+        clearInlineError(errorContainerId);
+        clearInputError(currentPasswordEl, newPasswordEl, confirmNewPasswordEl);
+
+        const currentPassword = currentPasswordEl.value;
+        const newPassword = newPasswordEl.value;
+        const confirmNewPassword = confirmNewPasswordEl.value;
+
+        if (!currentPassword) {
+            showInlineError(errorContainerId, "Password lama wajib diisi.");
+            showInputError(currentPasswordEl);
+            return;
+        }
+        if (!newPassword) {
+            showInlineError(errorContainerId, "Password baru wajib diisi.");
+            showInputError(newPasswordEl);
+            return;
+        }
+        if (newPassword.length < 4) {
+            showInlineError(errorContainerId, "Password baru minimal 4 karakter.");
+            showInputError(newPasswordEl);
+            return;
+        }
+        if (newPassword !== confirmNewPassword) {
+            showInlineError(errorContainerId, "Konfirmasi password baru tidak cocok.");
+            showInputError(confirmNewPasswordEl);
+            return;
+        }
+
+        if (!loggedInUser || !loggedInUser.username) {
+            showAlert("Error: Informasi pengguna tidak ditemukan. Silakan login ulang.", "error");
+            return;
+        }
+
+        showLoading("Mengubah password...");
+        google.script.run
+            .withSuccessHandler(response => {
+                hideLoading();
+                if (response.success) {
+                    showAlert(response.message, 'success');
+                    closeChangePasswordModal();
+                } else {
+                    showInlineError(errorContainerId, response.error || "Gagal mengubah password.");
+                }
+            })
+            .withFailureHandler(err => {
+                hideLoading();
+                showInlineError(errorContainerId, `Error server: ${err.message}`);
+            })
+            .changeUserPassword(loggedInUser.username, currentPassword, newPassword);
+    }
+
+    // ... (fungsi lainnya) ...
+
+    function handleGoogleLoginAttempt() {
+        const loginErrorEl = document.getElementById('loginError');
+        if (loginErrorEl) loginErrorEl.style.display = "none"; // Sembunyikan error lama
+
+        showLoading("Mencoba login dengan Google...");
+        google.script.run
+            .withSuccessHandler(response => {
+                hideLoading();
+                if (response.success) {
+                    loggedInUser = { username: response.username, role: response.role, teacherName: response.teacherName, googleEmail: response.googleEmail }; // Simpan info user
+                    try {
+                        sessionStorage.setItem('loggedInUserData', JSON.stringify(loggedInUser));
+                    } catch (e) {
+                        console.error("Gagal menyimpan sesi login Google di browser:", e);
+                    }
+                    proceedAfterLogin(); // Panggil fungsi yang sama seperti login biasa
+                } else {
+                    if (loginErrorEl) {
+                        loginErrorEl.textContent = response.error || "Login dengan Google gagal.";
+                        loginErrorEl.style.display = "block";
+                    } else {
+                        showAlert(response.error || "Login dengan Google gagal.", "error");
+                    }
+                }
+            })
+            .withFailureHandler(err => {
+                hideLoading();
+                if (loginErrorEl) {
+                    loginErrorEl.textContent = "Error server saat login Google: " + err.message;
+                    loginErrorEl.style.display = "block";
+                } else {
+                    showAlert("Error server saat login Google: " + err.message, "error");
+                }
+            })
+            .loginViaLinkedGoogleAccount(); // Fungsi backend baru yang akan kita buat
+    }
+
+    function updateGoogleLinkButtonVisibility() {
+        const btnLinkAdmin = document.getElementById('btnLinkGoogleAccountAdmin');
+        const btnUnlinkAdmin = document.getElementById('btnUnlinkGoogleAccountAdmin');
+        const linkedEmailTextAdmin = document.getElementById('linkedGoogleEmailAdmin');
+
+        const btnLinkUser = document.getElementById('btnLinkGoogleAccountUser');
+        const btnUnlinkUser = document.getElementById('btnUnlinkGoogleAccountUser');
+        const linkedEmailTextUser = document.getElementById('linkedGoogleEmailUser');
+
+        let currentBtnLink = null;
+        let currentBtnUnlink = null;
+        let currentLinkedEmailText = null;
+
+        // Tentukan elemen mana yang aktif berdasarkan tampilan saat ini
+        // Ini bisa disederhanakan jika Anda hanya punya satu set tombol global
+        if (document.getElementById('adminDashboardContainer') && document.getElementById('adminDashboardContainer').offsetParent !== null) { // Cek apakah admin dashboard visible
+            currentBtnLink = btnLinkAdmin;
+            currentBtnUnlink = btnUnlinkAdmin;
+            currentLinkedEmailText = linkedEmailTextAdmin;
+        } else if (document.getElementById('ceklokInputContainer') && document.getElementById('ceklokInputContainer').offsetParent !== null) { // Cek apakah ceklok table visible
+            currentBtnLink = btnLinkUser;
+            currentBtnUnlink = btnUnlinkUser;
+            currentLinkedEmailText = linkedEmailTextUser;
+        }
+        // Tambahkan kondisi lain jika tombol ini ada di view lain
+
+        if (loggedInUser && loggedInUser.googleEmail) { // Jika ada email Google yang tertaut
+            if (currentBtnLink) currentBtnLink.style.display = 'none';
+            if (currentBtnUnlink) currentBtnUnlink.style.display = 'inline-block'; // atau 'block' sesuai layout
+            if (currentLinkedEmailText) {
+                currentLinkedEmailText.textContent = 'Tertaut dengan: ' + loggedInUser.googleEmail;
+                currentLinkedEmailText.style.display = 'block';
+            }
+        } else { // Jika tidak ada email Google yang tertaut
+            if (currentBtnLink) currentBtnLink.style.display = 'inline-block';
+            if (currentBtnUnlink) currentBtnUnlink.style.display = 'none';
+            if (currentLinkedEmailText) {
+                currentLinkedEmailText.textContent = '';
+                currentLinkedEmailText.style.display = 'none';
+            }
+        }
+    }
+
+
+    function handleUnlinkGoogleAccount() {
+        if (!loggedInUser || !loggedInUser.username) {
+            showAlert("Error: Informasi pengguna tidak ditemukan. Silakan login ulang.", "error");
+            return;
+        }
+        if (!loggedInUser.googleEmail) {
+            showAlert("Akun Anda tidak sedang tertaut dengan email Google.", "info");
+            return;
+        }
+
+        // PERBAIKAN PESAN KONFIRMASI:
+        const confirmationMessage = `Anda akan memutuskan hubungan akun Google (${loggedInUser.googleEmail}) dari pengguna '${loggedInUser.username}'. Lanjutkan?`;
+
+        if (confirm(confirmationMessage)) { // Gunakan variabel yang sudah diformat dengan benar
+            showLoading("Memutuskan hubungan akun Google...");
+            google.script.run
+                .withSuccessHandler(response => {
+                    hideLoading();
+                    if (response.success) {
+                        showAlert(response.message, 'success');
+                        loggedInUser.googleEmail = null; // Hapus dari objek loggedInUser
+                        // Perbarui juga di sessionStorage
+                        try {
+                            const storedData = JSON.parse(sessionStorage.getItem('loggedInUserData'));
+                            if (storedData) {
+                                delete storedData.googleEmail; // atau set ke null
+                                sessionStorage.setItem('loggedInUserData', JSON.stringify(storedData));
+                            }
+                        } catch(e) { console.error("Error updating sessionStorage for googleEmail unlink:", e); }
+                        updateGoogleLinkButtonVisibility(); // Perbarui tampilan tombol
+                    } else {
+                        showAlert(response.error || "Gagal memutuskan hubungan akun Google.", 'error');
+                    }
+                })
+                .withFailureHandler(err => {
+                    hideLoading();
+                    showAlert(`Error server: ${err.message}`, 'error');
+                })
+                .unlinkCurrentUserFromGoogle(loggedInUser.username);
+        }
+    }
+
+    // --- Fungsi Utilitas Tambahan untuk Tahun ---
+    // (Tambahkan ini jika belum ada, atau pastikan sudah ada dari modifikasi sebelumnya)
+    function populateYearSelect(selectElementId, minYear, maxYear, defaultSelectedYear) {
+      const yearSelect = document.getElementById(selectElementId);
+      if (!yearSelect) {
+          console.error("Element select tahun tidak ditemukan:", selectElementId);
+          return;
+      }
+
+      yearSelect.innerHTML = ''; // Kosongkan opsi lama
+
+        // Pastikan minYear dan maxYear adalah angka
+        minYear = parseInt(minYear);
+        maxYear = parseInt(maxYear);
+        defaultSelectedYear = parseInt(defaultSelectedYear);
+
+      if (isNaN(minYear) || isNaN(maxYear)) {
+          console.error("minYear atau maxYear bukan angka yang valid untuk populateYearSelect");
+          const currentY = new Date().getFullYear();
+          minYear = isNaN(minYear) ? currentY : minYear;
+          maxYear = isNaN(maxYear) ? currentY : maxYear;
+          if (minYear > maxYear) maxYear = minYear; // safety
+      }
+
+
+      if (minYear > maxYear) {
+            console.warn(`populateYearSelect: minYear (${minYear}) is greater than maxYear (${maxYear}). Defaulting to maxYear only.`);
+            maxYear = minYear; // Atau bisa juga minYear = maxYear, intinya samakan.
+      }
+
+      for (let year = maxYear; year >= minYear; year--) {
+          const option = document.createElement('option');
+          option.value = year;
+          option.textContent = year;
+          if (year === defaultSelectedYear) {
+              option.selected = true;
+          }
+          yearSelect.appendChild(option);
+      }
+      // Jika setelah loop tidak ada yang terpilih (misal defaultSelectedYear di luar rentang)
+      // dan ada opsi, maka pilih opsi pertama (tahun terbaru).
+      if (yearSelect.options.length > 0 && !yearSelect.value && defaultSelectedYear) {
+            yearSelect.value = defaultSelectedYear; // Coba set lagi
+            if(!yearSelect.value) yearSelect.value = yearSelect.options[0].value; // Fallback ke opsi pertama
+      } else if (yearSelect.options.length > 0 && !yearSelect.value) {
+            yearSelect.value = yearSelect.options[0].value;
+      }
+    }
+
+    function getYearFromMMYYYY(mm_yyyy_string) {
+      if (!mm_yyyy_string || !mm_yyyy_string.includes('/')) {
+          console.warn("Format mm_yyyy_string salah di getYearFromMMYYYY, mengembalikan tahun ini.");
+          return new Date().getFullYear();
+      }
+      const parts = mm_yyyy_string.split('/');
+      return parseInt(parts[1], 10);
+    }
+
+    function getMonthStrFromMMYYYY(mm_yyyy_string) {
+        if (!mm_yyyy_string || !mm_yyyy_string.includes('/')) {
+            console.warn("Format mm_yyyy_string salah di getMonthStrFromMMYYYY, mengembalikan bulan ini.");
+            return String(new Date().getMonth() + 1).padStart(2, '0');
+        }
+        return mm_yyyy_string.split('/')[0];
+    }
+
+    // --- Fungsi Validasi Rentang Bulan (BARU atau DIMODIFIKASI) ---
+    function validateMonthRange(bulanSelectId, tahunSelectId) {
+        const bulanSelect = document.getElementById(bulanSelectId);
+        const tahunSelect = document.getElementById(tahunSelectId);
+
+        if (!bulanSelect || !tahunSelect || !globalAdminMinMonthYear || !globalServerCurrentMonthYear) {
+            console.warn("validateMonthRange: Elemen atau variabel global tidak siap.");
+            return;
+        }
+
+        const selectedYear = parseInt(tahunSelect.value);
+        // const selectedMonth = parseInt(bulanSelect.value); // Tidak langsung digunakan untuk logic disable, tapi untuk reset
+
+        const minDefinedYear = getYearFromMMYYYY(globalAdminMinMonthYear);
+        const minDefinedMonth = parseInt(getMonthStrFromMMYYYY(globalAdminMinMonthYear));
+        const maxDefinedYear = getYearFromMMYYYY(globalServerCurrentMonthYear);
+        const maxDefinedMonth = parseInt(getMonthStrFromMMYYYY(globalServerCurrentMonthYear));
+
+        let reselectNeeded = false;
+        let firstEnabledMonth = null;
+
+        for (let i = 0; i < bulanSelect.options.length; i++) {
+            const monthOptionValue = parseInt(bulanSelect.options[i].value);
+            let disabled = false;
+
+            if (selectedYear === minDefinedYear && monthOptionValue < minDefinedMonth) {
+                disabled = true;
+            }
+            if (selectedYear === maxDefinedYear && monthOptionValue > maxDefinedMonth) {
+                disabled = true;
+            }
+            bulanSelect.options[i].disabled = disabled;
+
+            if (!disabled && firstEnabledMonth === null) {
+                firstEnabledMonth = bulanSelect.options[i].value;
+            }
+            if (bulanSelect.options[i].selected && disabled) {
+                reselectNeeded = true;
+            }
+        }
+
+        if (reselectNeeded) {
+            if (firstEnabledMonth) {
+                bulanSelect.value = firstEnabledMonth;
+            } else {
+                // Ini kasus jarang terjadi: semua bulan disabled untuk tahun terpilih
+                // Mungkin terjadi jika ada kesalahan logika atau setting ekstrem
+                console.warn("Semua bulan tidak valid untuk tahun yang dipilih:", selectedYear);
+                // Sebagai fallback, coba atur ke bulan minimum atau maksimum yang paling dekat jika memungkinkan
+                if (selectedYear === minDefinedYear) bulanSelect.value = String(minDefinedMonth).padStart(2,'0');
+                else if (selectedYear === maxDefinedYear) bulanSelect.value = String(maxDefinedMonth).padStart(2,'0');
+            }
+        }
+    }
+
+
+    function handlePrintRekap() {
+        const rekapBulanSelectEl = document.getElementById('rekapBulanSelect');
+        const rekapTahunSelectEl = document.getElementById('rekapTahunSelect');
+        
+        if (!rekapBulanSelectEl || !rekapTahunSelectEl) {
+            showAlert("Elemen pilih bulan/tahun untuk rekap tidak ditemukan.", "error");
+            return;
+        }
+        const selectedMonth = rekapBulanSelectEl.value;
+        const selectedYear = rekapTahunSelectEl.value;
+
+        if (!selectedMonth || !selectedYear) {
+            showAlert("Pilih Bulan dan Tahun pada tabel rekap terlebih dahulu sebelum mencetak.", "warning");
+            return;
+        }
+        if (rekapBulanSelectEl.options[rekapBulanSelectEl.selectedIndex].disabled) {
+            showAlert("Bulan yang dipilih tidak valid untuk tahun ini.", "warning");
+            return;
+        }
+        const periodeCetak = `${selectedMonth}/${selectedYear}`;
+
+        showLoading("Menyiapkan data untuk dicetak...");
+        google.script.run
+            .withSuccessHandler(responseGenerate => {
+                if (responseGenerate.success) {
+                    showAlert(responseGenerate.message || "Sheet sementara disiapkan, mengunduh PDF...", "info", 2000);
+                    // Panggil fungsi download dengan info dari sheet yang baru dibuat
+                    google.script.run
+                        .withSuccessHandler(responseDownload => {
+                            hideLoading();
+                            if (responseDownload.success && responseDownload.downloadUrl) {
+                                window.open(responseDownload.downloadUrl, '_blank');
+                                showAlert(`PDF "${responseDownload.fileName}" berhasil dibuat dan proses unduh dimulai. Sheet sementara akan dihapus.`, "success", 5000);
+                            } else {
+                                showAlert(responseDownload.error || "Gagal mengunduh PDF.", "error");
+                            }
+                        })
+                        .withFailureHandler(errDownload => {
+                            hideLoading();
+                            showAlert(`Error server saat mengunduh PDF: ${errDownload.message}`, "error");
+                        })
+                        .downloadSheetAsPDF(responseGenerate.sheetId, responseGenerate.lastDataRow, responseGenerate.lastDataCol);
+                } else {
+                    hideLoading();
+                    showAlert(responseGenerate.error || "Gagal menyiapkan data cetak.", "error");
+                }
+            })
+            .withFailureHandler(errGenerate => {
+                hideLoading();
+                showAlert(`Error server saat menyiapkan data cetak: ${errGenerate.message}`, "error");
+            })
+            .generatePrintableSheet(periodeCetak);
+    }
+
+
+
+    function downloadPdfFromCetak() { 
+        showLoading("Mengunduh PDF...");
+        google.script.run
+            .withSuccessHandler(response => {
+                hideLoading();
+                if (response.error) {
+                    showAlert(`Gagal membuat PDF: ${response.error}`, 'error');
+                } else if (response && typeof response === 'string' && response.startsWith('http')) {
+                    window.open(response, '_blank'); // Buka PDF di tab baru
+                    showAlert("PDF berhasil dibuat dan proses unduh dimulai.", "success", 3000);
+                } else {
+                    showAlert("URL PDF tidak valid atau terjadi kesalahan tidak diketahui saat mengunduh.", 'error');
+                }
+            })
+            .withFailureHandler(err => {
+                hideLoading();
+                showAlert(`Gagal memanggil fungsi download PDF: ${err.message}`, 'error');
+            })
+            .downloadPDF(); // Fungsi downloadPDF Anda yang sudah ada di code.gs
+    }
+
+  </script>
+</body>
+</html>
