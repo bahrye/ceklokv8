@@ -1,0 +1,57 @@
+<div class="container" id="adminDashboardContainer">
+  <div class="form-column">
+    <h2>Admin Dashboard</h2>
+    <div class="form-row">
+      <label for="namaAdminSelect">Pilih Nama Guru (Ceklok):</label>
+      <div class="input-wrapper">
+        <select id="namaAdminSelect" disabled>
+          <option value="">Memuat...</option>
+        </select>
+      </div>
+    </div>
+    <div class="btn-container" style="margin-top:0; margin-bottom: 20px;">
+        <button id="btnNextCeklokGuru" onclick="handleAdminPilihGuru()" disabled>Input Ceklok Guru Terpilih</button>
+    </div>
+    
+    <hr style="margin: 20px 0;">
+
+    <div class="form-row">
+      <label for="bulanAdminInput">Bulan & Tahun Global (A1):</label>
+      <div class="input-wrapper">
+        <input id="bulanAdminInput" type="text" placeholder="mm/yyyy" style="flex-grow:1;">
+        <button onclick="handleUpdateBulanTahunAdmin()">Update</button>
+      </div>
+    </div>
+    <div class="form-row-note">
+        <small>Setting ini (Sheet Setting, sel A1) mempengaruhi data ceklok yang ditampilkan/diinput.</small>
+    </div>
+
+    <hr style="margin: 20px 0;">
+    <h3>Menu Pengelolaan:</h3>
+    <div class="btn-container" style="flex-direction: column; gap: 10px; align-items: stretch;">
+      <button onclick="navigateToKalenderForm()">Kelola Kalender Pendidikan</button>
+      <button class="btn-success" onclick="navigateToUserManagement()">Kelola Akun Login Pengguna</button>
+      <button class="btn-warning" onclick="navigateToTeacherManagement()">Kelola Daftar Nama Guru</button>
+      <button onclick="navigateToHasilCeklok()">Lihat Hasil Ceklok</button>
+      <button onclick="openChangePasswordModal()">Ubah Password Saya</button>
+      <button class="btn-danger" onclick="logout()">Logout</button>
+    </div>
+
+    <hr style="margin: 25px 0;">
+    <h3>Histori Login Pengguna (20 Terbaru)</h3>
+    <div class="table-container" id="loginHistoryTableContainer" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px;">
+        <table id="loginHistoryTable">
+            <thead>
+                <tr>
+                    <th>Waktu Login</th>
+                    <th>Pengguna</th>
+                    <th>Nama Guru</th>
+                </tr>
+            </thead>
+            <tbody id="loginHistoryTableBody">
+                <tr><td colspan="3" style="text-align:center; padding: 15px;">Memuat histori...</td></tr>
+            </tbody>
+        </table>
+    </div>
+  </div>
+</div>
