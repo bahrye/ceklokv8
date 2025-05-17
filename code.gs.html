@@ -1,0 +1,2158 @@
+// Code.gs
+
+// Variabel global untuk nama sheet
+const KALENDER_SHEET_NAME = "Kalender_Pendidikan";
+const USERS_SHEET_NAME = "Users"; // Kolom: A=Username, B=Password, C=Role, D=Nama_Guru_Asli, E=GoogleEmail
+const NAMA_GURU_SHEET_NAME = "Nama_Guru"; // Kolom: A=Nama Guru
+const SETTING_SHEET_NAME = "Setting"; // Sel A1: BulanTahun (mm/yyyy) -> Ini akan menjadi batas bawah periode ceklok
+const CEKLOK_MANUAL_SHEET_NAME = "Ceklok_Manual";
+const HASIL_CEKLOK_SHEET_NAME = "Hasil_Ceklok";
+const CETAK_SHEET_NAME = "CETAK"; // Untuk PDF
+const LOGIN_HISTORY_SHEET_NAME = "Login_History";
+const OPSIKETLIBUR_SHEET_NAME = "Opsi_Keterangan_Libur";
+const LOCK_ID_SHEET_NAME = "LOCK_ID";
+const TEMPLATE_SHEET_FOR_BACKUP = "Worksheet";
+const BACKUP_SHEET_PREFIX = "Worksheet_";
+const WORKSHEET_NAME = "Worksheet"; // Pastikan ini konsisten dengan penggunaan di requestExcelExport
+const TEMP_SHEET_PREFIX = "CetakSementara_"; // Awalan untuk sheet sementara
+const CETAK_TEMPLATE_SHEET_NAME = "CETAK"; // Ganti jika nama template Anda berbeda
+
+function doGet(e) {
+  return HtmlService.createHtmlOutputFromFile('index')
+    .setTitle('Ceklok Guru MTS TANUNTUNG')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function getHtmlContent(filename) {
+  try {
+    return HtmlService.createHtmlOutputFromFile(filename).getContent();
+  } catch (e) {
+    Logger.log("Error Gagal memuat file HTML '" + filename + "': " + e.toString());
+    return "<p style='color:red;'>Error: Konten untuk '" + filename + "' tidak dapat dimuat. Pastikan file ada.</p>";
+  }
+}
+
+/**
+ * Mengambil pengaturan bulan/tahun yang relevan untuk input ceklok.
+ * Termasuk batas bawah dari admin (dari Setting A1) dan bulan/tahun server saat ini.
+ */
+function getCeklokInputSettings() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const settingSheet = ss.getSheetByName(SETTING_SHEET_NAME);
+    if (!settingSheet) {
+      return { success: false, error: `Sheet '${SETTING_SHEET_NAME}' tidak ditemukan.` };
+    }
+    const adminDefinedMinMonthYear = settingSheet.getRange('A1').getDisplayValue();
+    if (!adminDefinedMinMonthYear || !/^\d{2}\/\d{4}$/.test(adminDefinedMinMonthYear)) {
+      return { success: false, error: "Format bulan/tahun di Setting A1 (batas bawah admin) tidak valid (mm/yyyy)." };
+    }
+
+    const now = new Date();
+    // Format ke MM/YYYY sesuai kebutuhan frontend
+    const serverCurrentMonthYear = Utilities.formatDate(now, Session.getScriptTimeZone(), "MM/yyyy");
+
+    return {
+      success: true,
+      adminDefinedMinMonthYear: adminDefinedMinMonthYear,
+      serverCurrentMonthYear: serverCurrentMonthYear
+    };
+  } catch (e) {
+    Logger.log(`Error di getCeklokInputSettings: ${e.toString()}`);
+    return { success: false, error: `Gagal mengambil pengaturan input ceklok: ${e.message}` };
+  }
+}
+
+
+function setBulanTahunSetting(newBulanTahun) {
+  try {
+    if (!newBulanTahun || typeof newBulanTahun !== 'string' || !/^\d{2}\/\d{4}$/.test(newBulanTahun)) {
+      return { success: false, error: "Format Bulan/Tahun tidak valid. Harap gunakan format mm/yyyy (contoh: 05/2025)." };
+    }
+    const [mmStr, yyyyStr] = newBulanTahun.split("/");
+    const mm = parseInt(mmStr, 10);
+    const yyyy = parseInt(yyyyStr, 10);
+
+    if (isNaN(mm) || isNaN(yyyy) || mm < 1 || mm > 12 || yyyy < 2000 || yyyy > 2199) { // Batas tahun disesuaikan jika perlu
+      return { success: false, error: "Nilai Bulan/Tahun tidak valid. Gunakan mm/yyyy (tahun 2000-2199)." };
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const settingSheet = ss.getSheetByName(SETTING_SHEET_NAME);
+    if (!settingSheet) {
+      return { success: false, error: `Sheet '${SETTING_SHEET_NAME}' tidak ditemukan.` };
+    }
+    settingSheet.getRange('A1').setValue(newBulanTahun);
+    return { success: true, message: `Batas Bawah Periode Ceklok berhasil diubah menjadi ${newBulanTahun}.`, newBulanTahun: newBulanTahun };
+  } catch (e) {
+    Logger.log(`Error di setBulanTahunSetting: ${e.toString()}; Input: ${newBulanTahun}`);
+    return { success: false, error: `Gagal mengubah Batas Bawah Periode Ceklok: ${e.message}` };
+  }
+}
+
+function verifyLogin(username, password) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+    if (!usersSheet) return { success: false, error: `Sheet '${USERS_SHEET_NAME}' tidak ditemukan.` };
+
+    const data = usersSheet.getDataRange().getValues();
+    const headers = data[0];
+    const googleEmailColIdx = headers.indexOf("GoogleEmail");
+
+    if (googleEmailColIdx === -1) {
+        Logger.log("PERINGATAN di verifyLogin: Kolom 'GoogleEmail' tidak ditemukan di sheet Users.");
+    }
+
+    for (let i = 1; i < data.length; i++) {
+      const rowUsername = String(data[i][0]).trim();
+      const rowPassword = String(data[i][1]);
+      const rowRole = String(data[i][2]).trim();
+      const rowActualTeacherName = data[i][3] ? String(data[i][3]).trim() : "";
+      const rowGoogleEmail = (googleEmailColIdx !== -1 && data[i][googleEmailColIdx]) ? String(data[i][googleEmailColIdx]).trim() : null;
+
+      if (rowUsername === username && rowPassword === password) {
+        let effectiveTeacherName = null;
+        if (rowRole === "user") {
+          if (!rowActualTeacherName) {
+            return { success: false, error: `Login berhasil untuk '${username}', tetapi 'Nama_Guru_Asli' kosong. Hubungi admin.` };
+          }
+          effectiveTeacherName = rowActualTeacherName;
+          const sheetGuru = ss.getSheetByName(NAMA_GURU_SHEET_NAME);
+          if (sheetGuru) {
+            const guruList = sheetGuru.getRange(1, 1, sheetGuru.getLastRow(), 1).getValues().flat().filter(String).map(g => String(g).trim());
+            if (!guruList.includes(effectiveTeacherName)) {
+              return { success: false, error: `Nama Guru Asli '${effectiveTeacherName}' (user: ${username}) tidak ada di sheet '${NAMA_GURU_SHEET_NAME}'.` };
+            }
+          } else {
+            return { success: false, error: `Konfigurasi error: Sheet '${NAMA_GURU_SHEET_NAME}' tidak ditemukan.` };
+          }
+        }
+
+        try {
+            let loginHistorySheet = ensureSheet(LOGIN_HISTORY_SHEET_NAME, ["Username", "Login_Timestamp", "Nama_Guru", "Metode_Login"]);
+            const timestamp = new Date();
+            loginHistorySheet.appendRow([rowUsername, timestamp, effectiveTeacherName || '', "Password"]);
+        } catch (logError) {
+            Logger.log(`Gagal mencatat histori login untuk ${rowUsername}: ${logError.toString()}`);
+        }
+        return {
+            success: true,
+            username: rowUsername,
+            role: rowRole,
+            teacherName: effectiveTeacherName,
+            googleEmail: rowGoogleEmail
+        };
+      }
+    }
+    return { success: false, error: "Username atau password salah." };
+  } catch (e) {
+    Logger.log(`Error in verifyLogin: ${e.toString()}`);
+    return { success: false, error: `Error server saat login: ${e.message}` };
+  }
+}
+
+function getInitialData() { // Untuk Admin Dashboard
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetGuru = ss.getSheetByName(NAMA_GURU_SHEET_NAME);
+    const settingSheet = ss.getSheetByName(SETTING_SHEET_NAME); // Ini tetap dibaca
+
+    if (!sheetGuru) return { error: `Sheet '${NAMA_GURU_SHEET_NAME}' tidak ditemukan.` };
+    if (!settingSheet) return { error: `Sheet '${SETTING_SHEET_NAME}' (A1: mm/yyyy) tidak ditemukan.` };
+
+    const guruList = sheetGuru.getRange(1, 1, sheetGuru.getLastRow(), 1).getValues().flat().filter(String).map(g => String(g).trim());
+    // adminMinMonthYear adalah nilai dari Setting A1
+    const adminMinMonthYear = settingSheet.getRange('A1').getDisplayValue();
+
+    if (!adminMinMonthYear || !/^\d{2}\/\d{4}$/.test(adminMinMonthYear)) {
+      return { error: "Format bulan/tahun (batas bawah) di Setting A1 tidak valid (mm/yyyy)." };
+    }
+    
+    ensureSheet(KALENDER_SHEET_NAME, ["Tanggal (dd/mm/yyyy)", "Keterangan"]);
+
+    return { guruList, adminDefinedMinMonthYear: adminMinMonthYear }; // Ganti nama field agar lebih jelas
+  } catch (e) {
+      Logger.log(`Error in getInitialData: ${e.toString()}`);
+      return { error: `Gagal memuat data awal admin: ${e.message}`};
+  }
+}
+
+// Fungsi getBulanTahunSetting() yang lama tidak lagi dipanggil langsung dari user view.
+// Sebagai gantinya, getCeklokInputSettings() digunakan.
+
+function getCeklokData(nama, bulanTahun) {
+  try {
+    // Validasi input bulanTahun terhadap batasan (opsional tapi direkomendasikan di backend)
+    const settings = getCeklokInputSettings(); // Panggil fungsi yang sudah ada
+    if (settings.error) {
+      // Jika gagal mendapatkan settings, mungkin log error tapi biarkan proses getCeklokData berlanjut
+      // atau return error jika settings dianggap krusial untuk validasi di sini.
+      Logger.log(`Peringatan di getCeklokData: Tidak dapat memuat settings untuk validasi bulan - ${settings.error}`);
+    } else {
+      // Parse helper
+      const parseMonthYearToDate = (myStr) => {
+        if (!myStr || !myStr.includes('/')) return null;
+        const [m, y] = myStr.split('/').map(Number);
+        if (isNaN(m) || isNaN(y)) return null;
+        return new Date(y, m - 1, 1); // Hari ke-1 untuk perbandingan bulan
+      };
+
+      const requestedDateObj = parseMonthYearToDate(bulanTahun);
+      const minDateObj = parseMonthYearToDate(settings.adminDefinedMinMonthYear);
+      const maxDateObj = parseMonthYearToDate(settings.serverCurrentMonthYear);
+
+      if (requestedDateObj && minDateObj && requestedDateObj < minDateObj) {
+        return { error: `Periode ${bulanTahun} tidak diizinkan. Batas minimum adalah ${settings.adminDefinedMinMonthYear}.` };
+      }
+      if (requestedDateObj && maxDateObj && requestedDateObj > maxDateObj) {
+        return { error: `Periode ${bulanTahun} tidak diizinkan. Batas maksimum adalah ${settings.serverCurrentMonthYear}.` };
+      }
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CEKLOK_MANUAL_SHEET_NAME);
+    const liburSheet = ss.getSheetByName(KALENDER_SHEET_NAME);
+    const opsiKetLiburSheet = ss.getSheetByName(OPSIKETLIBUR_SHEET_NAME);
+
+    if (!sheet) return { error: `Sheet '${CEKLOK_MANUAL_SHEET_NAME}' tidak ditemukan.` };
+    if (!liburSheet) return { error: `Sheet '${KALENDER_SHEET_NAME}' tidak ditemukan.` };
+
+    let ketLiburOptions = [];
+    if (opsiKetLiburSheet && opsiKetLiburSheet.getLastRow() > 1) {
+      ketLiburOptions = opsiKetLiburSheet.getRange(2, 1, opsiKetLiburSheet.getLastRow() - 1, 1)
+                                .getValues().flat().filter(String).map(o => String(o).trim());
+    } else {
+      Logger.log(`Sheet '${OPSIKETLIBUR_SHEET_NAME}' tidak ada atau kosong.`);
+    }
+
+    const liburRows = liburSheet.getLastRow() > 1 ? liburSheet.getRange(2, 1, liburSheet.getLastRow() - 1, 2).getDisplayValues() : [];
+    const liburMap = {};
+    liburRows.forEach(([tglText, ket]) => {
+      if (tglText && tglText.trim()) liburMap[tglText.trim()] = ket;
+    });
+
+    if (!bulanTahun || !/^\d{2}\/\d{4}$/.test(bulanTahun)) return { error: "Format bulanTahun tidak valid (mm/yyyy)." };
+    const [mmStr, yyyyStr] = bulanTahun.split("/");
+    const mm = parseInt(mmStr, 10);
+    const yyyy = parseInt(yyyyStr, 10);
+    if (isNaN(mm) || isNaN(yyyy) || mm < 1 || mm > 12) return { error: "Bulan/Tahun tidak valid." };
+
+    const lastDay = new Date(yyyy, mm, 0).getDate();
+    const allData = sheet.getDataRange().getValues();
+    const headers = allData[0].map(h => String(h).trim());
+    const namaColIdx = headers.indexOf("Nama_Guru");
+    const tanggalColIdx = headers.indexOf("Tanggal");
+    const masukColIdx = headers.indexOf("Jam_Masuk");
+    const pulangColIdx = headers.indexOf("Jam_Pulang");
+    const ketLiburManualColIdx = headers.indexOf("Ket_Libur_Manual");
+
+    if ([namaColIdx, tanggalColIdx, masukColIdx, pulangColIdx, ketLiburManualColIdx].includes(-1)) {
+      let missingHeaders = [];
+      if (namaColIdx === -1) missingHeaders.push("Nama_Guru");
+      if (tanggalColIdx === -1) missingHeaders.push("Tanggal");
+      if (masukColIdx === -1) missingHeaders.push("Jam_Masuk");
+      if (pulangColIdx === -1) missingHeaders.push("Jam_Pulang");
+      if (ketLiburManualColIdx === -1) missingHeaders.push("Ket_Libur_Manual");
+      return { error: `Header di 'Ceklok_Manual' tidak lengkap. Kolom yang hilang: ${missingHeaders.join(', ')}.` };
+    }
+
+    const resultData = [];
+    const namaHariIndonesia = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+
+    for (let i = 1; i <= lastDay; i++) {
+      const dateObj = new Date(yyyy, mm - 1, i);
+      const dateStr = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "dd/MM/yyyy");
+      const hari = namaHariIndonesia[dateObj.getDay()];
+
+      const keteranganKalender = liburMap[dateStr] || '';
+      const isLiburKalender = (dateObj.getDay() === 0) || (keteranganKalender !== '');
+
+      const dataRow = allData.find(r =>
+        String(r[namaColIdx]).trim() === nama &&
+        r[tanggalColIdx] instanceof Date &&
+        Utilities.formatDate(new Date(r[tanggalColIdx]), Session.getScriptTimeZone(), "dd/MM/yyyy") === dateStr
+      );
+
+      resultData.push({
+        hari,
+        tanggal: dateStr,
+        dataMasuk: dataRow && dataRow[masukColIdx] !== undefined ? String(dataRow[masukColIdx]) : '',
+        dataPulang: dataRow && dataRow[pulangColIdx] !== undefined ? String(dataRow[pulangColIdx]) : '',
+        isLibur: isLiburKalender,
+        keterangan: keteranganKalender,
+        keteranganLiburManual: dataRow && dataRow[ketLiburManualColIdx] !== undefined ? String(dataRow[ketLiburManualColIdx]) : ''
+      });
+    }
+    return { data: resultData, optionsKeteranganLibur: ketLiburOptions };
+  } catch (e) {
+    Logger.log(`Error in getCeklokData: ${e.toString()}; Input Nama: ${nama}, BulanTahun: ${bulanTahun}`);
+    return { error: `Gagal mengambil data ceklok: ${e.message}` };
+  }
+}
+
+function simpanData(nama, dataInput) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CEKLOK_MANUAL_SHEET_NAME);
+    if (!sheet) return "Error: Sheet 'Ceklok_Manual' tidak ditemukan.";
+
+    const dataRange = sheet.getDataRange();
+    const data = dataRange.getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const namaColIdx = headers.indexOf("Nama_Guru");
+    const tanggalColIdx = headers.indexOf("Tanggal");
+    const masukColIdx = headers.indexOf("Jam_Masuk");
+    const pulangColIdx = headers.indexOf("Jam_Pulang");
+    const ketLiburManualColIdx = headers.indexOf("Ket_Libur_Manual");
+
+    if ([namaColIdx, tanggalColIdx, masukColIdx, pulangColIdx, ketLiburManualColIdx].includes(-1)) {
+      let missingHeaders = [];
+      if (namaColIdx === -1) missingHeaders.push("Nama_Guru");
+      if (tanggalColIdx === -1) missingHeaders.push("Tanggal");
+      if (masukColIdx === -1) missingHeaders.push("Jam_Masuk");
+      if (pulangColIdx === -1) missingHeaders.push("Jam_Pulang");
+      if (ketLiburManualColIdx === -1) missingHeaders.push("Ket_Libur_Manual");
+      return `Error: Header di 'Ceklok_Manual' tidak lengkap. Kolom yang hilang: ${missingHeaders.join(', ')}.`;
+    }
+
+    dataInput.forEach(row => {
+      if (!row || !row.tanggal) return;
+      const { tanggal, jamMasuk, jamPulang, keteranganLiburManual } = row;
+
+      let jm = jamMasuk || "";
+      let jp = jamPulang || "";
+      const ketLiburTrimmed = keteranganLiburManual ? String(keteranganLiburManual).trim() : "";
+      if (ketLiburTrimmed !== "") {
+        jm = "";
+        jp = "";
+      }
+
+      let existingRowIndex = -1;
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][tanggalColIdx] instanceof Date &&
+            Utilities.formatDate(new Date(data[i][tanggalColIdx]), Session.getScriptTimeZone(), "dd/MM/yyyy") === tanggal &&
+            String(data[i][namaColIdx]).trim() === nama) {
+          existingRowIndex = i + 1;
+          break;
+        }
+      }
+
+      if (existingRowIndex !== -1) {
+        sheet.getRange(existingRowIndex, masukColIdx + 1).setValue(jm);
+        sheet.getRange(existingRowIndex, pulangColIdx + 1).setValue(jp);
+        sheet.getRange(existingRowIndex, ketLiburManualColIdx + 1).setValue(ketLiburTrimmed);
+      } else if (jm || jp || ketLiburTrimmed !== "") {
+        const dateParts = tanggal.split("/");
+        const dateObject = new Date(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0]));
+        let newRowValues = new Array(headers.length).fill('');
+        newRowValues[namaColIdx] = nama;
+        newRowValues[tanggalColIdx] = dateObject;
+        newRowValues[masukColIdx] = jm;
+        newRowValues[pulangColIdx] = jp;
+        newRowValues[ketLiburManualColIdx] = ketLiburTrimmed;
+        sheet.appendRow(newRowValues);
+      }
+    });
+
+    if (sheet.getLastRow() > 1) {
+      const lastDataRow = sheet.getLastRow();
+      if (masukColIdx > -1) sheet.getRange(2, masukColIdx + 1, lastDataRow - 1, 1).setNumberFormat("@");
+      if (pulangColIdx > -1) sheet.getRange(2, pulangColIdx + 1, lastDataRow - 1, 1).setNumberFormat("@");
+      if (ketLiburManualColIdx > -1) sheet.getRange(2, ketLiburManualColIdx + 1, lastDataRow - 1, 1).setNumberFormat("@");
+    }
+    return "Data berhasil disimpan.";
+  } catch (e) {
+    Logger.log(`Error in simpanData: ${e.toString()}; Nama: ${nama}, DataInput: ${JSON.stringify(dataInput)}`);
+    return `Error saat menyimpan: ${e.message}`;
+  }
+}
+
+// FILE: code.gs.html
+
+// ... (fungsi-fungsi lain, termasuk getCeklokInputSettings, NAMA_GURU_SHEET_NAME, CETAK_SHEET_NAME, dll.) ...
+// Pastikan fungsi formatTimeToHHMM_or_Empty sudah ada seperti di respons sebelumnya:
+/*
+function formatTimeToHHMM_or_Empty(timeStr) {
+  if (!timeStr || String(timeStr).trim() === "" || String(timeStr).trim() === "-") {
+    return "";
+  }
+  const parts = String(timeStr).trim().split(/[.:]/);
+  if (parts.length === 2) {
+    const h = String(parts[0]).padStart(2, '0');
+    const m = String(parts[1]).padStart(2, '0');
+    if (!isNaN(parseInt(h, 10)) && !isNaN(parseInt(m, 10)) &&
+        parseInt(h, 10) >= 0 && parseInt(h, 10) < 24 &&
+        parseInt(m, 10) >= 0 && parseInt(m, 10) < 60) {
+      return `${h}.${m}`;
+    }
+  }
+  Logger.log("Format jam tidak valid, dikembalikan kosong: " + timeStr);
+  return "";
+}
+*/
+
+/**
+ * Menyiapkan data rekapitulasi kehadiran untuk dicetak ke sheet CETAK (template)
+ * sesuai dengan tata letak yang dirinci, termasuk label statis per guru.
+ * @param {string} selectedMonthYear Periode bulan dan tahun (format "MM/YYYY").
+ * @return {object} Objek yang menandakan sukses atau gagal beserta pesan.
+ */
+function prepareMonthlyRekapForPrint(selectedMonthYear) {
+  try {
+    // 1. Validasi input dan persiapan periode (kode tetap sama seperti sebelumnya)
+    if (!selectedMonthYear || !/^\d{2}\/\d{4}$/.test(selectedMonthYear)) {
+      return { success: false, error: "Format Bulan/Tahun untuk cetak tidak valid (MM/YYYY)." };
+    }
+    const settings = getCeklokInputSettings();
+    if (settings.success) {
+      const parseMY = (myStr) => { 
+        if (!myStr || !myStr.includes('/')) return null;
+        const [m, y] = myStr.split('/'); 
+        if (isNaN(parseInt(m)) || isNaN(parseInt(y))) return null;
+        return new Date(parseInt(y), parseInt(m) - 1, 1); 
+      };
+      const reqDate = parseMY(selectedMonthYear);
+      const minDate = parseMY(settings.adminDefinedMinMonthYear);
+      const maxDate = parseMY(settings.serverCurrentMonthYear);
+      if (reqDate && minDate && reqDate < minDate) {
+        return { success: false, error: `Periode cetak ${selectedMonthYear} di luar rentang (${settings.adminDefinedMinMonthYear} - ${settings.serverCurrentMonthYear}).` };
+      }
+      if (reqDate && maxDate && reqDate > maxDate) {
+         return { success: false, error: `Periode cetak ${selectedMonthYear} di luar rentang (${settings.adminDefinedMinMonthYear} - ${settings.serverCurrentMonthYear}).` };
+      }
+    } else {
+      Logger.log(`Peringatan di prepareMonthlyRekapForPrint: Gagal mengambil settings - ${settings.error}`);
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const namaGuruSheet = ss.getSheetByName(NAMA_GURU_SHEET_NAME);
+    const ceklokManualSheet = ss.getSheetByName(CEKLOK_MANUAL_SHEET_NAME);
+    const cetakSheet = ss.getSheetByName(CETAK_SHEET_NAME);
+
+    if (!namaGuruSheet) return { success: false, error: `Sheet '${NAMA_GURU_SHEET_NAME}' tidak ditemukan.` };
+    if (!ceklokManualSheet) return { success: false, error: `Sheet '${CEKLOK_MANUAL_SHEET_NAME}' tidak ditemukan.` };
+    if (!cetakSheet) return { success: false, error: `Sheet '${CETAK_SHEET_NAME}' (template) tidak ditemukan.` };
+
+    // 2. Ambil daftar guru
+    const daftarNamaGuru = namaGuruSheet.getLastRow() > 0 ?
+                           namaGuruSheet.getRange(1, 1, namaGuruSheet.getLastRow(), 1)
+                                      .getValues().flat().filter(String).map(g => String(g).trim()) :
+                           [];
+    if (daftarNamaGuru.length === 0) {
+      cetakSheet.getRange("C2").setValue("Tidak ada data guru.");
+      return { success: true, message: "Tidak ada data nama guru di sheet 'Nama_Guru'. Template CETAK diinfokan." };
+    }
+
+    // 3. Persiapan periode dan tanggal (kode tetap sama)
+    const [mmStr, yyyyStr] = selectedMonthYear.split('/');
+    const mm = parseInt(mmStr, 10);
+    const yyyy = parseInt(yyyyStr, 10);
+    
+    const tanggalAwalObj = new Date(yyyy, mm - 1, 1);
+    const tanggalAkhirObj = new Date(yyyy, mm, 0);
+    const jumlahHari = tanggalAkhirObj.getDate();
+
+    const tanggalAwalFormatted = Utilities.formatDate(tanggalAwalObj, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    const tanggalAkhirFormatted = Utilities.formatDate(tanggalAkhirObj, Session.getScriptTimeZone(), "yyyy-MM-dd");
+
+    // 4. Mengisi informasi global di template "CETAK" (kode tetap sama)
+    cetakSheet.getRange("C2").setValue(`${tanggalAwalFormatted} ~ ${tanggalAkhirFormatted}`);
+    cetakSheet.getRange("L2").setValue(tanggalAkhirFormatted);
+
+    const nomorTanggalHeader = [];
+    for (let i = 1; i <= jumlahHari; i++) {
+      nomorTanggalHeader.push(i);
+    }
+    for (let i = jumlahHari + 1; i <= 31; i++) {
+        nomorTanggalHeader.push("");
+    }
+    cetakSheet.getRange("A3:AE3").clearContent(); 
+    cetakSheet.getRange(3, 1, 1, nomorTanggalHeader.length).setValues([nomorTanggalHeader])
+              .setHorizontalAlignment("center");
+
+    // 5. Ambil data ceklok manual (kode tetap sama)
+    const ceklokManualData = ceklokManualSheet.getDataRange().getValues();
+    const ceklokHeaders = ceklokManualData[0].map(h => String(h).trim());
+    const idxNama = ceklokHeaders.indexOf("Nama_Guru");
+    const idxTanggal = ceklokHeaders.indexOf("Tanggal");
+    const idxMasuk = ceklokHeaders.indexOf("Jam_Masuk");
+    const idxPulang = ceklokHeaders.indexOf("Jam_Pulang");
+    const idxKetManual = ceklokHeaders.indexOf("Ket_Libur_Manual");
+
+    if ([idxNama, idxTanggal, idxMasuk, idxPulang, idxKetManual].includes(-1)) {
+      return { success: false, error: "Header kolom di 'Ceklok_Manual' tidak lengkap/tidak sesuai." };
+    }
+
+    // 6. Membersihkan area data guru lama di sheet "CETAK" (kode tetap sama)
+    const BARIS_MULAI_DATA_GURU_DI_TEMPLATE = 4;
+    const estimasiBarisAkhirDataLama = BARIS_MULAI_DATA_GURU_DI_TEMPLATE + (daftarNamaGuru.length * 3) + 5; // +5 buffer
+    const rangeDataLamaUntukDibersihkan = cetakSheet.getRange(
+        BARIS_MULAI_DATA_GURU_DI_TEMPLATE, 1,
+        Math.max(1, estimasiBarisAkhirDataLama - BARIS_MULAI_DATA_GURU_DI_TEMPLATE + 1), 
+        cetakSheet.getMaxColumns()
+    );
+    rangeDataLamaUntukDibersihkan.clearContent();
+    Logger.log(`Area data guru lama di sheet CETAK (mulai baris ${BARIS_MULAI_DATA_GURU_DI_TEMPLATE}) telah dibersihkan.`);
+
+    // 7. Iterasi melalui daftar guru dan mengisi data
+    let barisSaatIni = BARIS_MULAI_DATA_GURU_DI_TEMPLATE;
+
+    daftarNamaGuru.forEach((namaGuru, index) => {
+      // --- BARIS PERTAMA BLOK GURU (No, Nama, Label Statis) ---
+      // Kolom A (indeks 1): "ID:"
+      cetakSheet.getRange(barisSaatIni, 1).setValue("ID:").setHorizontalAlignment("left"); 
+      // Kolom C (indeks 3): Nomor Urut
+      cetakSheet.getRange(barisSaatIni, 3).setValue(index + 1).setHorizontalAlignment("center");
+      // Kolom I (indeks 9): "Nama:"
+      cetakSheet.getRange(barisSaatIni, 9).setValue("Nama:").setHorizontalAlignment("left");
+      // Kolom K (indeks 11): Nama Guru
+      cetakSheet.getRange(barisSaatIni, 11).setValue(namaGuru).setHorizontalAlignment("left");
+      // Kolom S (indeks 19): "Dept.:"
+      cetakSheet.getRange(barisSaatIni, 19).setValue("Dept.:").setHorizontalAlignment("left");
+      // Kolom U (indeks 21): "MTS~TANUNTUNG"
+      cetakSheet.getRange(barisSaatIni, 21).setValue("MTS~TANUNTUNG").setHorizontalAlignment("left");
+
+
+      // --- BARIS KEDUA BLOK GURU (Jam Masuk) ---
+      const barisJamMasuk = barisSaatIni + 1;
+      const arrayJamMasuk = [];
+
+      // --- BARIS KETIGA BLOK GURU (Jam Pulang) ---
+      const barisJamPulang = barisSaatIni + 2;
+      const arrayJamPulang = [];
+
+      for (let tgl = 1; tgl <= jumlahHari; tgl++) {
+        const tanggalCeklokStr = Utilities.formatDate(new Date(yyyy, mm - 1, tgl), Session.getScriptTimeZone(), "dd/MM/yyyy");
+        
+        let jamMasukUntukHariIni = ""; 
+        let jamPulangUntukHariIni = "";
+        
+        const dataCeklokHariIni = ceklokManualData.find(row =>
+          String(row[idxNama]).trim() === namaGuru &&
+          row[idxTanggal] instanceof Date &&
+          Utilities.formatDate(new Date(row[idxTanggal]), Session.getScriptTimeZone(), "dd/MM/yyyy") === tanggalCeklokStr
+        );
+
+        if (dataCeklokHariIni) {
+          const ketManual = String(dataCeklokHariIni[idxKetManual] || "").trim();
+          if (ketManual === "") { 
+            const jamMasukDb = String(dataCeklokHariIni[idxMasuk] || "").trim();
+            const jamPulangDb = String(dataCeklokHariIni[idxPulang] || "").trim();
+
+            jamMasukUntukHariIni = formatTimeToHHMM_or_Empty(jamMasukDb);
+            jamPulangUntukHariIni = formatTimeToHHMM_or_Empty(jamPulangDb);
+          }
+        }
+        arrayJamMasuk.push(jamMasukUntukHariIni);
+        arrayJamPulang.push(jamPulangUntukHariIni);
+      }
+      
+      for (let i = jumlahHari; i < 31; i++) { // Pastikan panjang array 31 untuk A-AE
+          arrayJamMasuk.push("");
+          arrayJamPulang.push("");
+      }
+
+      // Tulis baris jam masuk (mulai dari kolom A/1 sampai AE/31)
+      if (arrayJamMasuk.length > 0) {
+        cetakSheet.getRange(barisJamMasuk, 1, 1, arrayJamMasuk.length).setValues([arrayJamMasuk])
+                  .setHorizontalAlignment("center").setNumberFormat("@");
+      }
+      // Tulis baris jam pulang
+      if (arrayJamPulang.length > 0) {
+        cetakSheet.getRange(barisJamPulang, 1, 1, arrayJamPulang.length).setValues([arrayJamPulang])
+                  .setHorizontalAlignment("center").setNumberFormat("@");
+      }
+      
+      barisSaatIni += 3; // Pindah ke blok 3 baris berikutnya untuk guru selanjutnya
+    });
+
+    SpreadsheetApp.flush(); 
+    return { success: true, message: `Sheet '${CETAK_SHEET_NAME}' berhasil disiapkan untuk periode ${selectedMonthYear}.` };
+
+  } catch (e) {
+    Logger.log(`Error di prepareMonthlyRekapForPrint untuk periode ${selectedMonthYear}: ${e.toString()}\nStack: ${e.stack}`);
+    return { success: false, error: `Gagal menyiapkan data cetak: ${e.message}` };
+  }
+}
+
+function downloadPDF() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CETAK_SHEET_NAME);
+    if (!sheet) return { error: `Sheet '${CETAK_SHEET_NAME}' tidak ditemukan.` };
+
+    const exportUrl = ss.getUrl().replace(/edit$/, '') + 'export?';
+    const params = {
+      format: 'pdf', portrait: false, fitw: true,
+      top_margin: 0.4, bottom_margin: 0.4, left_margin: 0.4, right_margin: 0.4,
+      sheetnames: false, printtitle: false, pagenumbers: false,
+      gridlines: false, fzr: false, gid: sheet.getSheetId()
+    };
+    const query = Object.entries(params).map(([k, v]) => `${k}=${v}`).join('&');
+    const blob = UrlFetchApp.fetch(exportUrl + query, {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }
+    }).getBlob().setName(`Ceklok_${Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd_HH-mm")}.pdf`);
+
+    const folderName = 'Ceklok_PDF_MTSTANUNTUNG_Generated';
+    let folder = DriveApp.getFoldersByName(folderName);
+    folder = folder.hasNext() ? folder.next() : DriveApp.createFolder(folderName);
+
+    const files = folder.getFilesByName(blob.getName());
+    while(files.hasNext()) files.next().setTrashed(true);
+
+    const file = folder.createFile(blob);
+    return file.getUrl();
+  } catch (e) {
+    Logger.log(`Error downloadPDF: ${e.toString()}`);
+    return { error: `Gagal membuat PDF: ${e.message}` };
+  }
+}
+
+function getCeklokHasil() { // Fungsi ini mungkin perlu parameter bulan jika hasil cekloknya dinamis per bulan
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(HASIL_CEKLOK_SHEET_NAME);
+    if (!sheet) return { error: `Sheet '${HASIL_CEKLOK_SHEET_NAME}' tidak ditemukan.` };
+    if (sheet.getLastRow() < 2) return { headers: ["Info"], data: [["Data di Hasil Ceklok kosong."]] };
+
+    const NUM_COLUMNS_TO_READ = 32; // AF
+    const colsToFetch = Math.min(NUM_COLUMNS_TO_READ, sheet.getMaxColumns());
+    if (colsToFetch === 0) return { headers: ["Info"], data: [["Sheet Hasil Ceklok tidak punya kolom."]] };
+
+    const headers = sheet.getRange(2, 1, 1, colsToFetch).getDisplayValues()[0];
+    let dataRows = [];
+    if (sheet.getLastRow() > 2) {
+      dataRows = sheet.getRange(3, 1, sheet.getLastRow() - 2, colsToFetch).getDisplayValues();
+    }
+    return { headers: headers, data: dataRows };
+  } catch (e) {
+    Logger.log(`Error in getCeklokHasil: ${e.toString()}`);
+    return { error: `Gagal mengambil hasil ceklok: ${e.message}` };
+  }
+}
+
+function getKalenderPendidikanEntries() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName(KALENDER_SHEET_NAME);
+    if (!sheet) {
+        sheet = ensureSheet(KALENDER_SHEET_NAME, ["Tanggal (dd/mm/yyyy)", "Keterangan"]);
+        Logger.log(`Sheet '${KALENDER_SHEET_NAME}' dibuat saat getKalenderPendidikanEntries.`);
+        return []; // Kembalikan array kosong karena baru dibuat
+    }
+    if (sheet.getLastRow() < 2) return [];
+
+    const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getDisplayValues();
+    return values.map((row, index) => ({
+      date: row[0], description: row[1], sheetRow: index + 2
+    })).filter(entry => entry.date && entry.date.trim() !== "");
+  } catch (e) {
+    Logger.log(`Error di getKalenderPendidikanEntries: ${e.toString()}`);
+    return { error: `Gagal mengambil entri kalender: ${e.message}` };
+  }
+}
+
+function addKalenderPendidikanEntry(entryData) {
+  try {
+    if (!entryData || !entryData.date || !entryData.description) return {success: false, error: "Data tidak lengkap. Tanggal dan Keterangan wajib."};
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(entryData.date)) return {success: false, error: "Format Tanggal salah (dd/mm/yyyy)."};
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(KALENDER_SHEET_NAME);
+    if (!sheet) return {success: false, error: `Sheet '${KALENDER_SHEET_NAME}' tidak ditemukan.`};
+
+    sheet.appendRow([entryData.date, entryData.description]);
+    return {success: true, message: "Entri Kalender berhasil ditambahkan."};
+  } catch (e) {
+    Logger.log(`Error di addKalenderPendidikanEntry: ${e.toString()}`);
+    return {success: false, error: `Gagal menambah entri kalender: ${e.message}`};
+  }
+}
+
+function deleteKalenderPendidikanEntry(sheetRow) {
+  try {
+    if (!sheetRow || typeof sheetRow !== 'number' || sheetRow < 2) return {success: false, error: "Nomor baris tidak valid."};
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(KALENDER_SHEET_NAME);
+    if (!sheet) return {success: false, error: `Sheet '${KALENDER_SHEET_NAME}' tidak ditemukan.`};
+    if (sheetRow > sheet.getLastRow()) return {success: false, error: "Baris sudah dihapus atau tidak ada."};
+
+    sheet.deleteRow(sheetRow);
+    return {success: true, message: "Entri Kalender berhasil dihapus."};
+  } catch (e) {
+    Logger.log(`Error di deleteKalenderPendidikanEntry: ${e.toString()}`);
+    return {success: false, error: `Gagal menghapus entri kalender: ${e.message}`};
+  }
+}
+
+function getUsersForAdmin() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+    if (!usersSheet) return { success: false, error: `Sheet '${USERS_SHEET_NAME}' tidak ditemukan.` };
+
+    if (usersSheet.getLastRow() < 2) return { success: true, users: [] };
+    // Baca hingga kolom ke-4 (Username, Password, Role, Nama_Guru_Asli)
+    // Jika ada kolom GoogleEmail, itu akan diabaikan di sini, tapi diambil saat login.
+    const data = usersSheet.getRange(2, 1, usersSheet.getLastRow() - 1, Math.min(4, usersSheet.getLastColumn())).getValues();
+    const users = data.map(row => ({
+      username: String(row[0]).trim(),
+      role: String(row[2]).trim(),
+      teacherName: (row.length > 3 && row[3]) ? String(row[3]).trim() : "" // Kolom ke-4 (index 3)
+    })).filter(user => user.username);
+    return { success: true, users: users };
+  } catch (e) {
+    Logger.log(`Error in getUsersForAdmin: ${e.toString()}`);
+    return { success: false, error: `Gagal mengambil pengguna: ${e.message}` };
+  }
+}
+
+function addNewUser(userData) {
+  try {
+    if (!userData.username || !userData.password || !userData.role) {
+      return { success: false, error: "Username, password, dan role harus diisi." };
+    }
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+    if (!usersSheet) return { success: false, error: `Sheet '${USERS_SHEET_NAME}' tidak ditemukan.` };
+
+    // Pastikan header ada, jika tidak, buat default
+    if (usersSheet.getLastRow() === 0) {
+      usersSheet.appendRow(["Username", "Password", "Role", "Nama_Guru_Asli", "GoogleEmail"]);
+      usersSheet.getRange("A1:E1").setFontWeight("bold");
+    }
+
+
+    const usernames = usersSheet.getRange(2, 1, usersSheet.getLastRow() > 1 ? usersSheet.getLastRow() - 1 : 1, 1)
+                                .getValues().flat().map(u => String(u).trim());
+    if (usernames.includes(userData.username.trim())) {
+      return { success: false, error: `Username '${userData.username}' sudah ada.` };
+    }
+
+    let teacherNameToSave = "";
+    if (userData.role === 'user') {
+      if (!userData.teacherName) return { success: false, error: "Nama Guru Asli wajib untuk role 'user'." };
+      const namaGuruSheet = ss.getSheetByName(NAMA_GURU_SHEET_NAME);
+      if (namaGuruSheet) {
+        const guruList = namaGuruSheet.getRange(1, 1, namaGuruSheet.getLastRow(), 1).getValues().flat().filter(String).map(g => String(g).trim());
+        if (!guruList.includes(userData.teacherName.trim())) {
+             return { success: false, error: `Nama Guru '${userData.teacherName}' tidak ada di daftar. Tambahkan dulu.` };
+        }
+        teacherNameToSave = userData.teacherName.trim();
+      } else {
+        return { success: false, error: `Sheet '${NAMA_GURU_SHEET_NAME}' tidak ditemukan.` };
+      }
+    }
+    // Kolom GoogleEmail akan default kosong saat user baru dibuat via form ini
+    usersSheet.appendRow([userData.username.trim(), userData.password, userData.role.trim(), teacherNameToSave, ""]);
+    return { success: true, message: "Pengguna baru berhasil ditambahkan." };
+  } catch (e) {
+    Logger.log(`Error in addNewUser: ${e.toString()}`);
+    return { success: false, error: `Gagal menambah pengguna: ${e.message}` };
+  }
+}
+
+function updateUserByUsername(username, userDataToUpdate) {
+  try {
+    if (!username || !userDataToUpdate || !userDataToUpdate.newRole) {
+      return { success: false, error: "Username dan role baru wajib." };
+    }
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+    if (!usersSheet) return { success: false, error: `Sheet '${USERS_SHEET_NAME}' tidak ditemukan.` };
+
+    const data = usersSheet.getDataRange().getValues();
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim() === username) {
+        rowIndex = i + 1; break;
+      }
+    }
+    if (rowIndex === -1) return { success: false, error: `Pengguna '${username}' tidak ditemukan.` };
+
+    usersSheet.getRange(rowIndex, 3).setValue(userDataToUpdate.newRole.trim()); // Update Role (kolom C)
+    if (userDataToUpdate.newPassword) {
+      usersSheet.getRange(rowIndex, 2).setValue(userDataToUpdate.newPassword); // Update Password (kolom B)
+    }
+
+    let teacherNameToSave = "";
+    if (userDataToUpdate.newRole === 'user') {
+      if (!userDataToUpdate.newTeacherName) return { success: false, error: "Nama Guru Asli baru wajib untuk role 'user'." };
+      const namaGuruSheet = ss.getSheetByName(NAMA_GURU_SHEET_NAME);
+      if (namaGuruSheet) {
+        const guruList = namaGuruSheet.getRange(1, 1, namaGuruSheet.getLastRow(), 1).getValues().flat().filter(String).map(g => String(g).trim());
+        if (!guruList.includes(userDataToUpdate.newTeacherName.trim())) {
+             return { success: false, error: `Nama Guru '${userDataToUpdate.newTeacherName}' tidak ada di daftar.` };
+        }
+        teacherNameToSave = userDataToUpdate.newTeacherName.trim();
+      } else {
+        return { success: false, error: `Sheet '${NAMA_GURU_SHEET_NAME}' tidak ditemukan.` };
+      }
+    }
+    usersSheet.getRange(rowIndex, 4).setValue(teacherNameToSave); // Update Nama_Guru_Asli (kolom D)
+    return { success: true, message: `Pengguna '${username}' berhasil diperbarui.` };
+  } catch (e) {
+    Logger.log(`Error in updateUserByUsername: ${e.toString()}`);
+    return { success: false, error: `Gagal memperbarui pengguna: ${e.message}` };
+  }
+}
+
+function deleteUserByUsername(username) {
+  try {
+    if (!username) return { success: false, error: "Username wajib." };
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+    if (!usersSheet) return { success: false, error: `Sheet '${USERS_SHEET_NAME}' tidak ditemukan.` };
+
+    const data = usersSheet.getDataRange().getValues();
+    let rowIndex = -1;
+    let roleToDelete = '';
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim() === username) {
+        rowIndex = i + 1;
+        roleToDelete = String(data[i][2]).trim().toLowerCase();
+        break;
+      }
+    }
+    if (rowIndex === -1) return { success: false, error: `Pengguna '${username}' tidak ditemukan.` };
+
+    if (roleToDelete === 'admin') {
+        let adminCount = 0;
+        for (let i = 1; i < data.length; i++) {
+            if(String(data[i][2]).trim().toLowerCase() === 'admin') adminCount++;
+        }
+        if(adminCount <= 1 && rowIndex !== -1) {
+            return { success: false, error: `Tidak dapat menghapus satu-satunya akun admin.` };
+        }
+    }
+    usersSheet.deleteRow(rowIndex);
+    return { success: true, message: `Pengguna '${username}' berhasil dihapus.` };
+  } catch (e) {
+    Logger.log(`Error in deleteUserByUsername: ${e.toString()}`);
+    return { success: false, error: `Gagal menghapus pengguna: ${e.message}` };
+  }
+}
+
+function getTeachersForAdmin() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetGuru = ss.getSheetByName(NAMA_GURU_SHEET_NAME);
+    if (!sheetGuru) return { success: false, error: `Sheet '${NAMA_GURU_SHEET_NAME}' tidak ditemukan.` };
+    if (sheetGuru.getLastRow() === 0) return { success: true, teachers: [] };
+
+    const guruList = sheetGuru.getRange(1, 1, sheetGuru.getLastRow(), 1).getValues().flat().filter(String).map(g => String(g).trim());
+    return { success: true, teachers: guruList };
+  } catch (e) {
+    Logger.log(`Error in getTeachersForAdmin: ${e.toString()}`);
+    return { success: false, error: `Gagal mengambil data guru: ${e.message}` };
+  }
+}
+
+function addNewTeacher(teacherName) {
+  try {
+    if (!teacherName || teacherName.trim() === "") return { success: false, error: "Nama guru tidak boleh kosong." };
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetGuru = ss.getSheetByName(NAMA_GURU_SHEET_NAME);
+    if (!sheetGuru) return { success: false, error: `Sheet '${NAMA_GURU_SHEET_NAME}' tidak ditemukan.` };
+    if (sheetGuru.getLastRow() === 0) { // Jika sheet kosong, tambahkan header
+        sheetGuru.appendRow(["Nama Guru"]);
+        sheetGuru.getRange("A1").setFontWeight("bold");
+    }
+
+
+    const guruList = sheetGuru.getRange(1, 1, sheetGuru.getLastRow(), 1).getValues().flat().filter(String).map(g => String(g).trim());
+    if (guruList.includes(teacherName.trim())) {
+      return { success: false, error: `Nama guru '${teacherName}' sudah ada.` };
+    }
+    sheetGuru.appendRow([teacherName.trim()]);
+    return { success: true, message: `Nama guru '${teacherName.trim()}' berhasil ditambahkan.` };
+  } catch (e) {
+    Logger.log(`Error in addNewTeacher: ${e.toString()}`);
+    return { success: false, error: `Gagal menambah nama guru: ${e.message}` };
+  }
+}
+
+function updateTeacherByName(oldTeacherName, newTeacherName) {
+  try {
+    if (!oldTeacherName || !newTeacherName || oldTeacherName.trim() === "" || newTeacherName.trim() === "") {
+      return { success: false, error: "Nama guru lama dan baru tidak boleh kosong." };
+    }
+    if (oldTeacherName.trim() === newTeacherName.trim()) return { success: false, error: "Nama baru sama dengan nama lama." };
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetGuru = ss.getSheetByName(NAMA_GURU_SHEET_NAME);
+    if (!sheetGuru) return { success: false, error: `Sheet '${NAMA_GURU_SHEET_NAME}' tidak ditemukan.` };
+
+    const dataGuru = sheetGuru.getRange(1, 1, sheetGuru.getLastRow(), 1).getValues();
+    let rowIndexGuru = -1;
+    let guruListForValidation = [];
+    for (let i = 0; i < dataGuru.length; i++) {
+      const currentTeacher = String(dataGuru[i][0]).trim();
+      guruListForValidation.push(currentTeacher);
+      if (currentTeacher === oldTeacherName.trim()) rowIndexGuru = i + 1;
+    }
+    if (rowIndexGuru === -1) return { success: false, error: `Nama guru '${oldTeacherName}' tidak ditemukan.` };
+    if (guruListForValidation.includes(newTeacherName.trim())) return { success: false, error: `Nama guru '${newTeacherName}' sudah ada.` };
+
+    sheetGuru.getRange(rowIndexGuru, 1).setValue(newTeacherName.trim());
+
+    const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+    if (usersSheet && usersSheet.getLastRow() > 1) {
+      const dataUsers = usersSheet.getRange(2, 1, usersSheet.getLastRow() - 1, 4).getValues(); // Kolom D adalah index 3
+      for (let i = 0; i < dataUsers.length; i++) {
+        if (dataUsers[i][3] && String(dataUsers[i][3]).trim() === oldTeacherName.trim()) {
+          usersSheet.getRange(i + 2, 4).setValue(newTeacherName.trim());
+        }
+      }
+    }
+    return { success: true, message: `Nama guru '${oldTeacherName}' diperbarui menjadi '${newTeacherName}'. Referensi di Users juga diupdate.` };
+  } catch (e) {
+    Logger.log(`Error in updateTeacherByName: ${e.toString()}`);
+    return { success: false, error: `Gagal memperbarui nama guru: ${e.message}` };
+  }
+}
+
+function deleteTeacherByName(teacherName) {
+  try {
+    if (!teacherName || teacherName.trim() === "") return { success: false, error: "Nama guru tidak boleh kosong." };
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetGuru = ss.getSheetByName(NAMA_GURU_SHEET_NAME);
+    if (!sheetGuru) return { success: false, error: `Sheet '${NAMA_GURU_SHEET_NAME}' tidak ditemukan.` };
+
+    const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+    if (usersSheet && usersSheet.getLastRow() > 1) {
+      const dataUsersTeacherNames = usersSheet.getRange(2, 4, usersSheet.getLastRow() - 1, 1).getValues().flat().map(name => name ? String(name).trim() : "");
+      if (dataUsersTeacherNames.includes(teacherName.trim())) {
+        return { success: false, error: `Guru '${teacherName}' terhubung ke user. Update/hapus user terkait dulu.` };
+      }
+    }
+
+    const dataGuru = sheetGuru.getRange(1, 1, sheetGuru.getLastRow(), 1).getValues();
+    let rowIndexGuru = -1;
+    for (let i = 0; i < dataGuru.length; i++) {
+      if (String(dataGuru[i][0]).trim() === teacherName.trim()) {
+        rowIndexGuru = i + 1; break;
+      }
+    }
+    if (rowIndexGuru === -1) return { success: false, error: `Nama guru '${teacherName}' tidak ditemukan.` };
+
+    sheetGuru.deleteRow(rowIndexGuru);
+    return { success: true, message: `Nama guru '${teacherName}' berhasil dihapus.` };
+  } catch (e) {
+    Logger.log(`Error in deleteTeacherByName: ${e.toString()}`);
+    return { success: false, error: `Gagal menghapus nama guru: ${e.message}` };
+  }
+}
+
+function getLoginHistory(limit = 20) {
+    try {
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        const historySheet = ss.getSheetByName(LOGIN_HISTORY_SHEET_NAME);
+
+        if (!historySheet) {
+            return { success: true, history: [], message: `Sheet '${LOGIN_HISTORY_SHEET_NAME}' tidak ditemukan.` };
+        }
+        if (historySheet.getLastRow() <= 1) { // Hanya header atau kosong
+            return { success: true, history: [] };
+        }
+
+        const lastRow = historySheet.getLastRow();
+        const headerRows = 1;
+        const dataRowsCount = lastRow - headerRows;
+        const rowsToFetch = Math.min(dataRowsCount, limit);
+
+        if (rowsToFetch <= 0) {
+            return { success: true, history: [] };
+        }
+
+        // Baca 3 kolom: Username, Timestamp, Nama_Guru
+        // Metode_Login adalah kolom ke-4 jika ada.
+        const numColsToRead = Math.min(3, historySheet.getLastColumn());
+        const range = historySheet.getRange(lastRow - rowsToFetch + 1, 1, rowsToFetch, numColsToRead);
+        const values = range.getDisplayValues();
+
+        const historyEntries = values.map(row => {
+            return {
+                username: row[0] || '-',
+                timestamp: row[1] || '-',
+                teacherName: (numColsToRead > 2 && row[2]) ? row[2] : '-'
+            };
+        });
+        return { success: true, history: historyEntries.reverse() };
+    } catch (e) {
+        Logger.log(`Error di getLoginHistory: ${e.toString()}`);
+        return { success: false, error: `Gagal mengambil histori login: ${e.message}` };
+    }
+}
+
+function ensureSheet(sheetName, headers = []) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    if (headers.length > 0) {
+      sheet.appendRow(headers);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setHorizontalAlignment("center");
+    }
+  } else if (sheet.getLastRow() === 0 && headers.length > 0) { // Sheet ada tapi kosong
+      sheet.appendRow(headers);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setHorizontalAlignment("center");
+  }
+  return sheet;
+}
+
+function saveOrUpdateLockId(teacherName, lockId) {
+  if (!teacherName || !lockId) {
+    return { success: false, error: "Nama Guru dan LOCK_ID tidak boleh kosong." };
+  }
+  try {
+    const lockIdSheet = ensureSheet(LOCK_ID_SHEET_NAME, ["Nama_Guru", "LOCK_ID"]);
+    const data = lockIdSheet.getDataRange().getValues();
+    let rowIndex = -1;
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === teacherName) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+    if (rowIndex !== -1) {
+      lockIdSheet.getRange(rowIndex, 2).setValue(lockId);
+    } else {
+      lockIdSheet.appendRow([teacherName, lockId]);
+    }
+    return { success: true, message: "LOCK_ID berhasil disimpan." };
+  } catch (e) {
+    Logger.log(`Error in saveOrUpdateLockId: ${e.toString()}`);
+    return { success: false, error: `Gagal menyimpan LOCK_ID: ${e.message}` };
+  }
+}
+
+function getLockIdForTeacher(teacherName) {
+  if (!teacherName) return null;
+  try {
+    const lockIdSheet = ensureSheet(LOCK_ID_SHEET_NAME, ["Nama_Guru", "LOCK_ID"]);
+    const data = lockIdSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === teacherName) {
+        return data[i][1] ? String(data[i][1]).trim() : null;
+      }
+    }
+    return null;
+  } catch (e) {
+    Logger.log(`Error in getLockIdForTeacher: ${e.toString()}`);
+    return null;
+  }
+}
+
+function formatTimeToHHMM_Excel(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string' || String(timeStr).trim() === "") {
+    return "";
+  }
+  const parts = String(timeStr).trim().split(/[.:]/);
+  if (parts.length === 2) {
+    const h = String(parts[0]).padStart(2, '0');
+    const m = String(parts[1]).padStart(2, '0');
+    if (!isNaN(parseInt(h, 10)) && !isNaN(parseInt(m, 10)) &&
+        parseInt(h, 10) >= 0 && parseInt(h, 10) < 24 &&
+        parseInt(m, 10) >= 0 && parseInt(m, 10) < 60) {
+      return `'${h}:${m}`;
+    }
+  }
+  return "";
+}
+
+// Fungsi requestExcelExport yang LAMA tidak lagi digunakan secara langsung,
+// digantikan oleh saveLockIdAndPrepareBackupSheet dan exportBackupSheetToExcel
+// function requestExcelExport(teacherName, bulanTahun, lockIdFromUser) { ... }
+
+
+function ensureTemplateSheetExists() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let templateSheet = ss.getSheetByName(TEMPLATE_SHEET_FOR_BACKUP); // TEMPLATE_SHEET_FOR_BACKUP = "Worksheet"
+  if (!templateSheet) {
+    templateSheet = ss.insertSheet(TEMPLATE_SHEET_FOR_BACKUP);
+    const worksheetHeaders = [
+      "LOCK ID", "TANGGAL", "HARI",
+      "JAM MASUK", "JAM PULANG",
+      "ALASAN TIDAK HADIR", "DESKRIPSI"
+    ];
+    templateSheet.appendRow(worksheetHeaders);
+    templateSheet.getRange(1, 1, 1, worksheetHeaders.length).setFontWeight("bold").setHorizontalAlignment("center");
+    SpreadsheetApp.flush();
+    Logger.log(`Template sheet '${TEMPLATE_SHEET_FOR_BACKUP}' dibuat dengan header.`);
+  } else if (templateSheet.getLastRow() === 0) { // Jika template ada tapi kosong
+    const worksheetHeaders = [
+      "LOCK ID", "TANGGAL", "HARI",
+      "JAM MASUK", "JAM PULANG",
+      "ALASAN TIDAK HADIR", "DESKRIPSI"
+    ];
+    templateSheet.appendRow(worksheetHeaders);
+    templateSheet.getRange(1, 1, 1, worksheetHeaders.length).setFontWeight("bold").setHorizontalAlignment("center");
+    SpreadsheetApp.flush();
+    Logger.log(`Header ditambahkan ke template sheet '${TEMPLATE_SHEET_FOR_BACKUP}' yang kosong.`);
+  }
+  return templateSheet;
+}
+
+function saveLockIdAndPrepareBackupSheet(teacherName, bulanTahun, lockId, clientCeklokData) {
+  try {
+    SpreadsheetApp.flush();
+    const saveLockResult = saveOrUpdateLockId(teacherName, lockId);
+    if (!saveLockResult.success) {
+      return { success: false, error: `Gagal menyimpan LOCK_ID: ${saveLockResult.error}` };
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const backupSheetName = `${BACKUP_SHEET_PREFIX}${teacherName}`; // e.g. Worksheet_NamaGuru
+
+    let existingBackupSheet = ss.getSheetByName(backupSheetName);
+    if (existingBackupSheet) {
+      ss.deleteSheet(existingBackupSheet);
+      Logger.log(`Sheet cadangan lama '${backupSheetName}' dihapus.`);
+    }
+    SpreadsheetApp.flush();
+
+    const templateSheet = ensureTemplateSheetExists();
+    if (!templateSheet) {
+        return { success: false, error: `Sheet template '${TEMPLATE_SHEET_FOR_BACKUP}' tidak ditemukan dan tidak dapat dibuat.` };
+    }
+    const newBackupSheet = templateSheet.copyTo(ss).setName(backupSheetName);
+    newBackupSheet.clearContents(); // Hapus semua konten dari duplikat template
+    
+    const worksheetHeaders = [ // Definisikan header lagi untuk memastikan
+      "LOCK ID", "TANGGAL", "HARI",
+      "JAM MASUK", "JAM PULANG",
+      "ALASAN TIDAK HADIR", "DESKRIPSI"
+    ];
+    newBackupSheet.appendRow(worksheetHeaders);
+    newBackupSheet.getRange(1, 1, 1, worksheetHeaders.length).setFontWeight("bold").setHorizontalAlignment("center");
+    SpreadsheetApp.flush();
+    Logger.log(`Sheet cadangan baru '${backupSheetName}' dibuat dari template dan header ditambahkan.`);
+
+    const dataToLoad = [];
+    const scriptTimeZone = Session.getScriptTimeZone();
+    let exportIdCounter = parseInt(lockId, 10);
+
+    if (isNaN(exportIdCounter)) {
+        Logger.log(`LOCK_ID "${lockId}" tidak valid untuk counter EXPORT_ID, menggunakan 1 sebagai basis.`);
+        exportIdCounter = 1;
+    }
+
+    clientCeklokData.forEach((row, index) => {
+      let formattedDateYYYYMMDD = "";
+      if (row.tanggal && typeof row.tanggal === 'string' && row.tanggal.includes('/')) {
+        const dateParts = row.tanggal.split("/");
+        if (dateParts.length === 3) {
+          const day = parseInt(dateParts[0], 10);
+          const month = parseInt(dateParts[1], 10) - 1;
+          const year = parseInt(dateParts[2], 10);
+          if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+            const dateObject = new Date(year, month, day);
+            formattedDateYYYYMMDD = Utilities.formatDate(dateObject, scriptTimeZone, "yyyy-MM-dd");
+          }
+        }
+      }
+
+      const jamMasukFormatted = formatTimeToHHMM_Excel(row.jamMasuk);
+      const jamPulangFormatted = formatTimeToHHMM_Excel(row.jamPulang);
+      const keteranganManual = row.keteranganLiburManual || "";
+
+      dataToLoad.push([
+        exportIdCounter + index,
+        formattedDateYYYYMMDD,
+        row.hari,
+        jamMasukFormatted,
+        jamPulangFormatted,
+        keteranganManual,
+        keteranganManual
+      ]);
+    });
+
+    if (dataToLoad.length > 0) {
+      newBackupSheet.getRange(2, 1, dataToLoad.length, dataToLoad[0].length).setValues(dataToLoad);
+      newBackupSheet.getRange(2, 1, dataToLoad.length, newBackupSheet.getLastColumn()).setNumberFormat("@");
+      Logger.log(`Data dimuat ke '${backupSheetName}'. Jumlah baris: ${dataToLoad.length}`);
+    } else {
+      Logger.log(`Tidak ada data valid dari klien untuk dimuat ke '${backupSheetName}'.`);
+    }
+    SpreadsheetApp.flush();
+
+    const cleanupInfo = {
+      sheetName: backupSheetName,
+      teacherName: teacherName,
+      lockId: lockId,
+      deleteAt: Date.now() + (15 * 60 * 1000),
+      status: "PENDING_NO_EXPORT"
+    };
+    PropertiesService.getScriptProperties().setProperty(`cleanup_${backupSheetName}`, JSON.stringify(cleanupInfo));
+    Logger.log(`Penghapusan untuk '${backupSheetName}' dijadwalkan dalam 15 menit.`);
+    createTriggerForCleanupIfNotExists();
+
+    return { success: true, message: "LOCK_ID disimpan. Sheet cadangan disiapkan.", backupSheetName: backupSheetName };
+  } catch (e) {
+    Logger.log(`Error di saveLockIdAndPrepareBackupSheet: ${e.toString()} \nStack: ${e.stack}`);
+    return { success: false, error: `Gagal memproses: ${e.message}` };
+  }
+}
+
+function exportBackupSheetToExcel(backupSheetName, teacherName, bulanTahun, lockId) {
+  try {
+    SpreadsheetApp.flush();
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetToExport = ss.getSheetByName(backupSheetName);
+
+    if (!sheetToExport) {
+      return { success: false, error: `Sheet cadangan '${backupSheetName}' tidak ditemukan.` };
+    }
+
+    const spreadsheetId = ss.getId();
+    const sheetId = sheetToExport.getSheetId();
+    const internalExportUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx&gid=${sheetId}`;
+    const token = ScriptApp.getOAuthToken();
+    const fetchParams = {
+      headers: { 'Authorization': 'Bearer ' + token },
+      muteHttpExceptions: true
+    };
+    const httpResponse = UrlFetchApp.fetch(internalExportUrl, fetchParams);
+
+    if (httpResponse.getResponseCode() !== 200) {
+      Logger.log(`Gagal mengambil blob Excel untuk '${backupSheetName}'. Kode: ${httpResponse.getResponseCode()}. Respon: ${httpResponse.getContentText()}`);
+      return { success: false, error: `Gagal mengambil data Excel dari server (Status: ${httpResponse.getResponseCode()}).` };
+    }
+    const blob = httpResponse.getBlob();
+    const bulanTahunFormattedForFilename = bulanTahun.replace('/', '-');
+    const dynamicFileName = `Backup_${teacherName}_${bulanTahunFormattedForFilename}_LOCK${lockId}.xlsx`;
+    const base64Data = Utilities.base64Encode(blob.getBytes());
+    const mimeType = blob.getContentType() || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    const cleanupKey = `cleanup_${backupSheetName}`;
+    let cleanupInfo = PropertiesService.getScriptProperties().getProperty(cleanupKey);
+    if (cleanupInfo) {
+      cleanupInfo = JSON.parse(cleanupInfo);
+      cleanupInfo.deleteAt = Date.now() + (1 * 60 * 1000);
+      cleanupInfo.status = "EXPORTED_PENDING_DELETE";
+      PropertiesService.getScriptProperties().setProperty(cleanupKey, JSON.stringify(cleanupInfo));
+      Logger.log(`Penghapusan untuk '${backupSheetName}' dijadwalkan ulang dalam 1 menit setelah export.`);
+    } else {
+       const newCleanupInfo = {
+        sheetName: backupSheetName, teacherName: teacherName, lockId: lockId,
+        deleteAt: Date.now() + (1 * 60 * 1000),
+        status: "EXPORTED_PENDING_DELETE_NO_PRIOR_RECORD"
+      };
+      PropertiesService.getScriptProperties().setProperty(`cleanup_${backupSheetName}`, JSON.stringify(newCleanupInfo));
+      Logger.log(`Info cleanup tidak ditemukan untuk '${backupSheetName}', jadwal baru untuk penghapusan 1 menit.`);
+    }
+     createTriggerForCleanupIfNotExists();
+
+    return {
+      success: true, base64Data: base64Data, fileName: dynamicFileName,
+      mimeType: mimeType, message: `Export untuk '${dynamicFileName}' dimulai.`
+    };
+  } catch (e) {
+    Logger.log(`Error di exportBackupSheetToExcel: ${e.toString()} \nStack: ${e.stack}`);
+    return { success: false, error: `Gagal mengekspor sheet cadangan: ${e.message}` };
+  }
+}
+
+function autoCleanupBackupSheets() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const properties = PropertiesService.getScriptProperties();
+  const allKeys = properties.getKeys();
+  const now = Date.now();
+  let deletedCount = 0;
+
+  allKeys.forEach(key => {
+    if (key.startsWith("cleanup_")) {
+      const backupSheetNameFromKey = key.substring("cleanup_".length);
+      try {
+        const infoString = properties.getProperty(key);
+        if (infoString) {
+          const info = JSON.parse(infoString);
+          const sheetNameToDelete = info.sheetName || backupSheetNameFromKey;
+
+          if (now >= info.deleteAt) {
+            const sheet = ss.getSheetByName(sheetNameToDelete);
+            if (sheet) {
+              ss.deleteSheet(sheet);
+              Logger.log(`Sheet cadangan '${sheetNameToDelete}' (Status: ${info.status}) otomatis dihapus.`);
+              deletedCount++;
+            } else {
+              Logger.log(`Sheet cadangan '${sheetNameToDelete}' (Status: ${info.status}) tidak ditemukan untuk dihapus.`);
+            }
+            properties.deleteProperty(key);
+          }
+        }
+      } catch (e) {
+        Logger.log(`Error saat memproses cleanup untuk key '${key}': ${e.toString()}`);
+      }
+    }
+  });
+  if (deletedCount > 0) Logger.log(`${deletedCount} sheet cadangan berhasil dihapus oleh autoCleanup.`);
+
+  const remainingCleanupKeys = properties.getKeys().filter(k => k.startsWith("cleanup_"));
+  if (remainingCleanupKeys.length === 0) {
+    deleteTriggerByName('autoCleanupBackupSheets');
+    Logger.log("Tidak ada jadwal cleanup tersisa, trigger 'autoCleanupBackupSheets' dihapus.");
+  }
+}
+
+function createTriggerForCleanupIfNotExists() {
+  const triggers = ScriptApp.getProjectTriggers();
+  let triggerExists = false;
+  for (let i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === "autoCleanupBackupSheets") {
+      triggerExists = true;
+      break;
+    }
+  }
+  if (!triggerExists) {
+    ScriptApp.newTrigger("autoCleanupBackupSheets")
+      .timeBased()
+      .everyMinutes(5)
+      .create();
+    Logger.log("Trigger untuk 'autoCleanupBackupSheets' dibuat, berjalan setiap 5 menit.");
+  }
+}
+
+function deleteTriggerByName(triggerHandlerFunctionName) {
+  const triggers = ScriptApp.getProjectTriggers();
+  for (let i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === triggerHandlerFunctionName) {
+      ScriptApp.deleteTrigger(triggers[i]);
+      Logger.log(`Trigger dengan handler '${triggerHandlerFunctionName}' berhasil dihapus.`);
+      break;
+    }
+  }
+}
+
+function changeUserPassword(username, oldPassword, newPassword) {
+  try {
+    if (!username) return { success: false, error: "Informasi pengguna tidak valid." };
+    if (!oldPassword) return { success: false, error: "Password lama wajib diisi." };
+    if (!newPassword || String(newPassword).length < 4) {
+      return { success: false, error: "Password baru minimal 4 karakter." };
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+    if (!usersSheet) return { success: false, error: `Sheet '${USERS_SHEET_NAME}' tidak ditemukan.` };
+
+    const data = usersSheet.getDataRange().getValues();
+    let rowIndex = -1;
+    let actualOldPassword = "";
+
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim() === username) {
+        rowIndex = i + 1;
+        actualOldPassword = String(data[i][1]);
+        break;
+      }
+    }
+    if (rowIndex === -1) return { success: false, error: "Pengguna tidak ditemukan." };
+    if (actualOldPassword !== oldPassword) return { success: false, error: "Password lama salah." };
+
+    usersSheet.getRange(rowIndex, 2).setValue(newPassword);
+    SpreadsheetApp.flush();
+    return { success: true, message: "Password berhasil diubah." };
+  } catch (e) {
+    Logger.log(`Error in changeUserPassword for ${username}: ${e.toString()}`);
+    return { success: false, error: `Gagal mengubah password: ${e.message}` };
+  }
+}
+
+function linkCurrentUserToGoogle(customUsername) {
+  try {
+    if (!customUsername) {
+      return { success: false, error: "Username kustom tidak diberikan." };
+    }
+    const activeUserEmail = Session.getActiveUser().getEmail();
+    if (!activeUserEmail) {
+      Logger.log(`Active user email: ${activeUserEmail}, Effective user: ${Session.getEffectiveUser().getEmail()}`);
+      return { success: false, error: "Tidak dapat mengambil email akun Google Anda." };
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+    if (!usersSheet) return { success: false, error: `Sheet '${USERS_SHEET_NAME}' tidak ditemukan.` };
+
+    const headers = usersSheet.getRange(1, 1, 1, usersSheet.getLastColumn()).getValues()[0];
+    const googleEmailColIdx = headers.indexOf("GoogleEmail"); // Kolom E (index 4)
+
+    if (googleEmailColIdx === -1) {
+        return { success: false, error: "Kolom 'GoogleEmail' tidak ditemukan di sheet Users." };
+    }
+
+    const data = usersSheet.getDataRange().getValues();
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim() === customUsername) {
+        rowIndex = i + 1;
+        if (data[i][googleEmailColIdx] && String(data[i][googleEmailColIdx]).trim() !== "" && String(data[i][googleEmailColIdx]).trim() !== activeUserEmail) {
+            return { success: false, error: `Akun '${customUsername}' sudah tertaut dengan email Google lain (${data[i][googleEmailColIdx]}).` };
+        }
+        if (String(data[i][googleEmailColIdx]).trim() === activeUserEmail) {
+             return { success: true, message: `Akun Anda sudah tertaut dengan ${activeUserEmail}.`, linkedEmail: activeUserEmail };
+        }
+        break;
+      }
+    }
+    if (rowIndex === -1) return { success: false, error: `Pengguna kustom '${customUsername}' tidak ditemukan.` };
+
+    usersSheet.getRange(rowIndex, googleEmailColIdx + 1).setValue(activeUserEmail);
+    SpreadsheetApp.flush();
+    return { success: true, message: `Akun '${customUsername}' berhasil ditautkan dengan email Google: ${activeUserEmail}.`, linkedEmail: activeUserEmail };
+  } catch (e) {
+    Logger.log(`Error in linkCurrentUserToGoogle for ${customUsername}: ${e.toString()}`);
+    return { success: false, error: `Gagal menautkan akun Google: ${e.message}` };
+  }
+}
+
+function loginViaLinkedGoogleAccount() {
+  try {
+    const activeUserGoogleEmail = Session.getActiveUser().getEmail();
+    if (!activeUserGoogleEmail) {
+      Logger.log("Tidak dapat mengambil email Google pengguna aktif.");
+      return { success: false, error: "Tidak dapat mengakses akun Google Anda." };
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+    if (!usersSheet) return { success: false, error: `Sheet '${USERS_SHEET_NAME}' tidak ditemukan.` };
+
+    const data = usersSheet.getDataRange().getValues();
+    const headers = data[0];
+    const googleEmailColIdx = headers.indexOf("GoogleEmail"); // Kolom E (index 4)
+    if (googleEmailColIdx === -1) {
+      return { success: false, error: "Konfigurasi internal error: Kolom 'GoogleEmail' tidak ditemukan." };
+    }
+
+    for (let i = 1; i < data.length; i++) {
+      const rowCustomUsername = String(data[i][0]).trim();
+      const rowRole = String(data[i][2]).trim();
+      const rowActualTeacherName = data[i][3] ? String(data[i][3]).trim() : "";
+      const linkedGoogleEmailInSheet = data[i][googleEmailColIdx] ? String(data[i][googleEmailColIdx]).trim() : "";
+
+      if (linkedGoogleEmailInSheet && linkedGoogleEmailInSheet.toLowerCase() === activeUserGoogleEmail.toLowerCase()) {
+        let effectiveTeacherName = null;
+        if (rowRole === "user") {
+          if (!rowActualTeacherName) {
+            return { success: false, error: `Login Google berhasil untuk '${activeUserGoogleEmail}', tetapi 'Nama_Guru_Asli' untuk akun '${rowCustomUsername}' kosong. Hubungi admin.` };
+          }
+          effectiveTeacherName = rowActualTeacherName;
+          // ... (validasi nama guru di NAMA_GURU_SHEET_NAME seperti di verifyLogin) ...
+           const sheetGuru = ss.getSheetByName(NAMA_GURU_SHEET_NAME);
+            if (sheetGuru) {
+                const guruList = sheetGuru.getRange(1, 1, sheetGuru.getLastRow(), 1).getValues().flat().filter(String).map(g => String(g).trim());
+                if (!guruList.includes(effectiveTeacherName)) {
+                return { success: false, error: `Nama Guru Asli '${effectiveTeacherName}' (akun: ${rowCustomUsername}) tidak ada di sheet '${NAMA_GURU_SHEET_NAME}'.` };
+                }
+            } else {
+                return { success: false, error: `Konfigurasi error: Sheet '${NAMA_GURU_SHEET_NAME}' tidak ditemukan.` };
+            }
+        }
+
+        try {
+          let loginHistorySheet = ensureSheet(LOGIN_HISTORY_SHEET_NAME, ["Username", "Login_Timestamp", "Nama_Guru", "Metode_Login"]);
+          const timestamp = new Date();
+          loginHistorySheet.appendRow([rowCustomUsername, timestamp, effectiveTeacherName || '', "Google"]);
+        } catch (logError) {
+          Logger.log(`Gagal mencatat histori login Google untuk ${rowCustomUsername}: ${logError.toString()}`);
+        }
+        return {
+          success: true, username: rowCustomUsername, role: rowRole,
+          teacherName: effectiveTeacherName, googleEmail: activeUserGoogleEmail
+        };
+      }
+    }
+    return { success: false, error: `Akun Google Anda (${activeUserGoogleEmail}) tidak tertaut dengan akun manapun. Silakan login dengan username/password, lalu tautkan akun Anda.` };
+  } catch (e) {
+    Logger.log(`Error in loginViaLinkedGoogleAccount: ${e.toString()}`);
+    return { success: false, error: `Error server saat login Google: ${e.message}` };
+  }
+}
+
+function unlinkCurrentUserFromGoogle(customUsername) {
+  try {
+    if (!customUsername) {
+      return { success: false, error: "Username kustom tidak diberikan." };
+    }
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+    if (!usersSheet) return { success: false, error: `Sheet '${USERS_SHEET_NAME}' tidak ditemukan.` };
+
+    const headers = usersSheet.getRange(1, 1, 1, usersSheet.getLastColumn()).getValues()[0];
+    const googleEmailColIdx = headers.indexOf("GoogleEmail"); // Kolom E (index 4)
+    if (googleEmailColIdx === -1) {
+      return { success: false, error: "Kolom 'GoogleEmail' tidak ditemukan di sheet Users (backend)." };
+    }
+
+    const data = usersSheet.getDataRange().getValues();
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim() === customUsername) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+    if (rowIndex === -1) return { success: false, error: `Pengguna kustom '${customUsername}' tidak ditemukan.` };
+
+    usersSheet.getRange(rowIndex, googleEmailColIdx + 1).setValue('');
+    SpreadsheetApp.flush();
+    return { success: true, message: `Hubungan akun Google untuk '${customUsername}' berhasil diputuskan.` };
+  } catch (e) {
+    Logger.log(`Error in unlinkCurrentUserFromGoogle for ${customUsername}: ${e.toString()}`);
+    return { success: false, error: `Gagal memutuskan hubungan akun Google: ${e.message}` };
+  }
+}
+
+// Tambahkan fungsi ini di Code.gs
+
+/**
+ * Mengambil data rekapitulasi ceklok bulanan yang dinamis untuk semua guru.
+ *
+ * @param {string} selectedMonthYear Periode bulan dan tahun yang dipilih (format "MM/YYYY").
+ * @return {Object} Objek yang berisi data rekapitulasi atau objek error.
+ * Contoh struktur sukses:
+ * {
+ * success: true,
+ * bulanTahunRekap: "05/2025",
+ * jumlahHari: 31,
+ * daftarHeaderTanggal: ["1", "2", ..., "31"], // Header untuk kolom tanggal
+ * daftarGuru: [ // Array objek guru dengan data cekloknya
+ * {
+ * nama: "Nama Guru A",
+ * absensi: [ // Array data absensi, urut per tanggal
+ * { tanggalFormatted: "01/05", jamMasuk: "07.00", jamPulang: "14.00", keterangan: "", isLibur: false, cssClass: "" },
+ * { tanggalFormatted: "02/05", jamMasuk: "-", jamPulang: "-", keterangan: "Libur Nasional", isLibur: true, cssClass: "libur-nasional" },
+ * { tanggalFormatted: "03/05", jamMasuk: "S", jamPulang: "S", keterangan: "Sakit", isLibur: false, cssClass: "keterangan-manual" },
+ * // ... dan seterusnya untuk semua tanggal di bulan tersebut
+ * ]
+ * },
+ * // ... objek untuk guru lainnya
+ * ]
+ * }
+ */
+function getDynamicMonthlyRekap(selectedMonthYear) {
+  try {
+    // Validasi input selectedMonthYear
+    if (!selectedMonthYear || !/^\d{2}\/\d{4}$/.test(selectedMonthYear)) {
+      return { success: false, error: "Format Bulan/Tahun untuk rekap tidak valid (MM/YYYY)." };
+    }
+
+    // Validasi terhadap batasan global (opsional tapi baik)
+    const settings = getCeklokInputSettings(); // Gunakan fungsi yang sudah ada
+    if (settings.success) {
+      const parseMY = (myStr) => { const [m, y] = myStr.split('/'); return new Date(parseInt(y), parseInt(m) - 1, 1); };
+      const reqDate = parseMY(selectedMonthYear);
+      if (reqDate < parseMY(settings.adminDefinedMinMonthYear) || reqDate > parseMY(settings.serverCurrentMonthYear)) {
+        return { success: false, error: `Periode ${selectedMonthYear} di luar rentang yang diizinkan (${settings.adminDefinedMinMonthYear} - ${settings.serverCurrentMonthYear}).` };
+      }
+    } else {
+      Logger.log(`Peringatan di getDynamicMonthlyRekap: Gagal mengambil settings global untuk validasi - ${settings.error}`);
+      // Tetap lanjutkan jika settings tidak krusial untuk fungsi inti ini,
+      // karena validasi utama ada di client sebelum memanggil.
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const namaGuruSheet = ss.getSheetByName(NAMA_GURU_SHEET_NAME);
+    const ceklokManualSheet = ss.getSheetByName(CEKLOK_MANUAL_SHEET_NAME);
+    const kalenderSheet = ss.getSheetByName(KALENDER_SHEET_NAME);
+
+    if (!namaGuruSheet) return { success: false, error: `Sheet '${NAMA_GURU_SHEET_NAME}' tidak ditemukan.` };
+    if (!ceklokManualSheet) return { success: false, error: `Sheet '${CEKLOK_MANUAL_SHEET_NAME}' tidak ditemukan.` };
+    if (!kalenderSheet) return { success: false, error: `Sheet '${KALENDER_SHEET_NAME}' tidak ditemukan.` };
+
+    // 1. Ambil daftar semua guru
+    const daftarNamaGuru = namaGuruSheet.getLastRow() > 0 ?
+                           namaGuruSheet.getRange(1, 1, namaGuruSheet.getLastRow(), 1)
+                                      .getValues().flat().filter(String).map(g => g.trim()) :
+                           [];
+    if (daftarNamaGuru.length === 0) {
+      return { success: true, bulanTahunRekap: selectedMonthYear, jumlahHari: 0, daftarHeaderTanggal: [], daftarGuru: [], message: "Tidak ada data guru untuk ditampilkan." };
+    }
+
+    // 2. Persiapkan data untuk bulan yang dipilih
+    const [mmStr, yyyyStr] = selectedMonthYear.split('/');
+    const mm = parseInt(mmStr, 10);
+    const yyyy = parseInt(yyyyStr, 10);
+    const jumlahHari = new Date(yyyy, mm, 0).getDate();
+    const daftarHeaderTanggal = Array.from({ length: jumlahHari }, (_, i) => String(i + 1));
+
+    // 3. Ambil data libur dari Kalender Pendidikan
+    const liburKalenderMap = {}; // Key: "dd/MM/yyyy", Value: Keterangan Libur
+    if (kalenderSheet.getLastRow() > 1) {
+      const kalenderData = kalenderSheet.getRange(2, 1, kalenderSheet.getLastRow() - 1, 2).getDisplayValues();
+      kalenderData.forEach(row => {
+        if (row[0] && row[0].trim() !== "") {
+          // Pastikan hanya data dari bulan dan tahun yang relevan
+          const tglParts = row[0].split('/');
+          if (tglParts.length === 3 && parseInt(tglParts[1]) === mm && parseInt(tglParts[2]) === yyyy) {
+            liburKalenderMap[row[0].trim()] = row[1].trim() || "Hari Libur";
+          }
+        }
+      });
+    }
+
+    // 4. Ambil semua data dari Ceklok_Manual untuk efisiensi
+    const ceklokManualData = ceklokManualSheet.getDataRange().getValues();
+    const ceklokHeaders = ceklokManualData[0].map(h => String(h).trim());
+    const idxNama = ceklokHeaders.indexOf("Nama_Guru");
+    const idxTanggal = ceklokHeaders.indexOf("Tanggal");
+    const idxMasuk = ceklokHeaders.indexOf("Jam_Masuk");
+    const idxPulang = ceklokHeaders.indexOf("Jam_Pulang");
+    const idxKetManual = ceklokHeaders.indexOf("Ket_Libur_Manual");
+
+    if ([idxNama, idxTanggal, idxMasuk, idxPulang, idxKetManual].includes(-1)) {
+      return { success: false, error: "Header kolom di 'Ceklok_Manual' tidak lengkap/tidak sesuai." };
+    }
+
+    // 5. Proses data per guru
+    const hasilRekapGuru = [];
+    const namaHariIndonesia = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+    const HARI_LIBUR_SEKOLAH_TEXT = "Hari Libur Sekolah"; // Definisikan konstanta untuk menghindari typo
+
+    for (const namaGuru of daftarNamaGuru) {
+      const dataAbsensiGuru = [];
+      for (let tgl = 1; tgl <= jumlahHari; tgl++) {
+        const currentDate = new Date(yyyy, mm - 1, tgl);
+        const tanggalFullStr = Utilities.formatDate(currentDate, Session.getScriptTimeZone(), "dd/MM/yyyy");
+        const tanggalFormattedUntukTooltip = Utilities.formatDate(currentDate, Session.getScriptTimeZone(), "dd MMM yyyy"); // Untuk tooltip
+        const hariDalamMinggu = currentDate.getDay(); 
+
+        let jamMasukDisplay = "-";
+        let jamPulangDisplay = "-";
+        let keteranganDisplay = "";
+        let isLiburHariIni = false;
+        let cssClass = "";
+
+        // Cek apakah hari Minggu
+        if (hariDalamMinggu === 0) { 
+          isLiburHariIni = true;
+          keteranganDisplay = "Minggu";
+          cssClass = "libur-minggu";
+        }
+
+        // Cek libur dari Kalender Pendidikan (menimpa jika bukan Minggu tapi ada di kalender)
+        if (liburKalenderMap[tanggalFullStr]) {
+          isLiburHariIni = true;
+          // Jika sudah "Minggu" dan ada libur kalender, keterangan libur kalender lebih prioritas
+          keteranganDisplay = liburKalenderMap[tanggalFullStr]; 
+          cssClass = "libur-kalender"; 
+        }
+
+        // Cari data di Ceklok_Manual
+        let dataCeklokUntukHariIni = null;
+        for (let k = 1; k < ceklokManualData.length; k++) { 
+          const row = ceklokManualData[k];
+          if (String(row[idxNama]).trim() === namaGuru &&
+              row[idxTanggal] instanceof Date &&
+              Utilities.formatDate(new Date(row[idxTanggal]), Session.getScriptTimeZone(), "dd/MM/yyyy") === tanggalFullStr) {
+            dataCeklokUntukHariIni = row;
+            break;
+          }
+        }
+        
+        if (dataCeklokUntukHariIni) {
+          const ketManual = String(dataCeklokUntukHariIni[idxKetManual] || "").trim();
+          
+          if (ketManual !== "") {
+            // Jika ada keterangan manual, itu yang utama
+            // isLiburHariIni tetap true jika memang hari Minggu atau Libur Kalender,
+            // tapi tampilan jam akan mengikuti ketManual.
+            
+            if (ketManual.trim().toLowerCase() === HARI_LIBUR_SEKOLAH_TEXT.trim().toLowerCase()) {
+              jamMasukDisplay = "T";
+              jamPulangDisplay = "T";
+            } else {
+              jamMasukDisplay = ketManual.substring(0, 1).toUpperCase(); 
+              jamPulangDisplay = ketManual.substring(0, 1).toUpperCase();
+            }
+            
+            // Update keteranganDisplay dan cssClass jika ada ketManual
+            if (isLiburHariIni) { // Jika ini hari Minggu/Libur Kalender DAN ada ket. manual
+                 keteranganDisplay = `${keteranganDisplay} (${ketManual})`; // Gabungkan info libur dan keterangan manual
+            } else { // Jika hari kerja dan ada ket. manual
+                keteranganDisplay = ketManual; // Keterangan utama adalah keterangan manual
+                cssClass = "keterangan-manual"; 
+            }
+            // Jika ketManual ada, kita tidak lagi menganggapnya sebagai "hadir" murni
+            // jadi jika sebelumnya cssClass adalah "hadir", kita timpa.
+            // Jika cssClass sudah "libur-minggu" atau "libur-kalender", kita biarkan
+            // dan hanya tambahkan "(ketManual)" pada keteranganDisplay.
+            if (cssClass !== "libur-minggu" && cssClass !== "libur-kalender") {
+                cssClass = "keterangan-manual";
+            }
+
+          } else if (!isLiburHariIni) { // Tidak ada ket. manual DAN BUKAN hari libur (Minggu/Kalender)
+            jamMasukDisplay = String(dataCeklokUntukHariIni[idxMasuk] || "").trim() || "-";
+            jamPulangDisplay = String(dataCeklokUntukHariIni[idxPulang] || "").trim() || "-";
+            if (jamMasukDisplay !== "-" || jamPulangDisplay !== "-") {
+                cssClass = "hadir"; // Ini adalah kondisi hadir murni
+            }
+          }
+          // Jika tidak ada ketManual dan INI ADALAH hari libur (Minggu/Kalender), 
+          // jamMasukDisplay dan jamPulangDisplay tetap "-" (default awal).
+        }
+        // Jika tidak ada dataCeklokUntukHariIni dan ini adalah hari libur,
+        // jamMasukDisplay dan jamPulangDisplay tetap "-" (default awal).
+        // Jika tidak ada dataCeklokUntukHariIni dan ini BUKAN hari libur (hari kerja kosong),
+        // jamMasukDisplay dan jamPulangDisplay juga tetap "-" (default awal).
+
+        dataAbsensiGuru.push({
+          tanggalFormatted: String(tgl), 
+          tanggalFullStr: tanggalFormattedUntukTooltip, // Tambahkan ini untuk tooltip yang lebih informatif
+          namaHari: namaHariIndonesia[hariDalamMinggu], 
+          jamMasuk: jamMasukDisplay,
+          jamPulang: jamPulangDisplay,
+          keterangan: keteranganDisplay,
+          isLibur: isLiburHariIni, // Ini tetap menandakan apakah HARI-nya libur secara kalender/minggu
+          cssClass: cssClass
+        });
+      }
+      hasilRekapGuru.push({ nama: namaGuru, absensi: dataAbsensiGuru });
+    }
+
+    return {
+      success: true,
+      bulanTahunRekap: selectedMonthYear,
+      jumlahHari: jumlahHari,
+      daftarHeaderTanggal: daftarHeaderTanggal,
+      daftarGuru: hasilRekapGuru
+    };
+
+  } catch (e) {
+    Logger.log(`Error di getDynamicMonthlyRekap untuk periode ${selectedMonthYear}: ${e.toString()}\nStack: ${e.stack}`);
+    return { success: false, error: `Gagal mengambil data rekapitulasi bulanan: ${e.message}` };
+  }
+}
+
+function formatTimeToHHMM_or_Empty(timeStr) {
+  if (!timeStr || String(timeStr).trim() === "" || String(timeStr).trim() === "-") {
+    return "";
+  }
+  const parts = String(timeStr).trim().split(/[.:]/);
+  if (parts.length === 2) {
+    const h = String(parts[0]).padStart(2, '0');
+    const m = String(parts[1]).padStart(2, '0');
+    if (!isNaN(parseInt(h, 10)) && !isNaN(parseInt(m, 10)) &&
+        parseInt(h, 10) >= 0 && parseInt(h, 10) < 24 &&
+        parseInt(m, 10) >= 0 && parseInt(m, 10) < 60) {
+      return `${h}.${m}`;
+    }
+  }
+  // Logger.log("Format jam tidak valid, dikembalikan kosong: " + timeStr); // Kurangi logging di produksi
+  return "";
+}
+
+
+/**
+ * Membuat atau memastikan trigger untuk autoCleanupTemporarySheets ada.
+ */
+function createOrEnsureCleanupTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+  let triggerExists = false;
+  for (let i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === "autoCleanupTemporarySheets") {
+      triggerExists = true;
+      break;
+    }
+  }
+  if (!triggerExists) {
+    ScriptApp.newTrigger("autoCleanupTemporarySheets")
+      .timeBased()
+      .everyMinutes(5) // Jalankan setiap 5 menit
+      .create();
+    Logger.log("Trigger untuk autoCleanupTemporarySheets berhasil dibuat.");
+  }
+}
+
+/**
+ * Menjadwalkan penghapusan sheet sementara.
+ * @param {string} sheetName Nama sheet yang akan dihapus.
+ * @param {number} delayMinutes Jumlah menit sebelum sheet dihapus.
+ */
+function scheduleTemporarySheetDeletion(sheetName, delayMinutes) {
+  try {
+    const scriptProperties = PropertiesService.getScriptProperties();
+    const deletionTime = new Date().getTime() + (delayMinutes * 60 * 1000);
+    scriptProperties.setProperty(`DELETE_${sheetName}`, deletionTime.toString());
+    createOrEnsureCleanupTrigger(); // Pastikan trigger pembersihan ada
+    Logger.log(`Penghapusan untuk sheet '${sheetName}' dijadwalkan dalam ${delayMinutes} menit.`);
+  } catch (e) {
+    Logger.log(`Gagal menjadwalkan penghapusan untuk sheet '${sheetName}': ${e.toString()}`);
+  }
+}
+
+/**
+ * Secara otomatis membersihkan sheet sementara yang sudah dijadwalkan untuk dihapus.
+ * Fungsi ini akan dijalankan oleh trigger berbasis waktu.
+ */
+function autoCleanupTemporarySheets() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const properties = scriptProperties.getProperties();
+  const currentTime = new Date().getTime();
+  let deletedCount = 0;
+
+  for (const key in properties) {
+    if (key.startsWith("DELETE_")) {
+      const sheetName = key.substring("DELETE_".length);
+      const deletionTime = parseInt(properties[key], 10);
+
+      if (currentTime >= deletionTime) {
+        try {
+          const sheetToDelete = ss.getSheetByName(sheetName);
+          if (sheetToDelete) {
+            ss.deleteSheet(sheetToDelete);
+            Logger.log(`Sheet sementara '${sheetName}' berhasil dihapus secara otomatis.`);
+            deletedCount++;
+          } else {
+            Logger.log(`Sheet sementara '${sheetName}' tidak ditemukan untuk dihapus (mungkin sudah dihapus).`);
+          }
+          scriptProperties.deleteProperty(key);
+        } catch (e) {
+          Logger.log(`Error saat mencoba menghapus sheet '${sheetName}': ${e.toString()}`);
+          // Pertimbangkan untuk tidak menghapus properti jika ada error, agar bisa dicoba lagi
+          // atau hapus properti agar tidak terus mencoba sheet yang bermasalah
+          scriptProperties.deleteProperty(key);
+        }
+      }
+    }
+  }
+  if (deletedCount > 0) {
+      Logger.log(`${deletedCount} sheet sementara telah dihapus.`);
+  }
+  // Jika tidak ada lagi properti DELETE_, trigger bisa dihapus untuk menghemat kuota trigger
+  const remainingDeleteKeys = Object.keys(scriptProperties.getProperties()).filter(k => k.startsWith("DELETE_"));
+  if (remainingDeleteKeys.length === 0) {
+      const triggers = ScriptApp.getProjectTriggers();
+      for (let i = 0; i < triggers.length; i++) {
+          if (triggers[i].getHandlerFunction() === "autoCleanupTemporarySheets") {
+              ScriptApp.deleteTrigger(triggers[i]);
+              Logger.log("Tidak ada jadwal penghapusan sheet, trigger autoCleanupTemporarySheets dihapus.");
+              break;
+          }
+      }
+  }
+}
+
+
+/**
+ * Membuat duplikat sheet CETAK, mengisinya dengan data rekap,
+ * melakukan formatting, dan mengembalikan info sheet duplikat.
+ * @param {string} selectedMonthYear Periode bulan dan tahun (format "MM/YYYY").
+ * @return {object} Objek berisi {success, sheetName, sheetId, lastDataRow, lastDataCol, message/error}.
+ */
+function generatePrintableSheet(selectedMonthYear) {
+  try {
+    // 1. Validasi input dan persiapan periode (kode dari prepareMonthlyRekapForPrint sebelumnya)
+    if (!selectedMonthYear || !/^\d{2}\/\d{4}$/.test(selectedMonthYear)) {
+      return { success: false, error: "Format Bulan/Tahun untuk cetak tidak valid (MM/YYYY)." };
+    }
+    const settings = getCeklokInputSettings(); // Asumsi fungsi ini ada
+    if (settings.success) {
+      const parseMY = (myStr) => { 
+        if (!myStr || !myStr.includes('/')) return null;
+        const [m, y] = myStr.split('/'); 
+        if (isNaN(parseInt(m)) || isNaN(parseInt(y))) return null;
+        return new Date(parseInt(y), parseInt(m) - 1, 1); 
+      };
+      const reqDate = parseMY(selectedMonthYear);
+      const minDate = parseMY(settings.adminDefinedMinMonthYear);
+      const maxDate = parseMY(settings.serverCurrentMonthYear);
+      if (reqDate && minDate && reqDate < minDate) {
+        return { success: false, error: `Periode cetak ${selectedMonthYear} di luar rentang (${settings.adminDefinedMinMonthYear} - ${settings.serverCurrentMonthYear}).` };
+      }
+      if (reqDate && maxDate && reqDate > maxDate) {
+         return { success: false, error: `Periode cetak ${selectedMonthYear} di luar rentang (${settings.adminDefinedMinMonthYear} - ${settings.serverCurrentMonthYear}).` };
+      }
+    } else {
+      Logger.log(`Peringatan di generatePrintableSheet: Gagal mengambil settings - ${settings.error}`);
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const templateSheet = ss.getSheetByName(CETAK_TEMPLATE_SHEET_NAME);
+    const namaGuruSheet = ss.getSheetByName(NAMA_GURU_SHEET_NAME);
+    const ceklokManualSheet = ss.getSheetByName(CEKLOK_MANUAL_SHEET_NAME);
+
+    if (!templateSheet) return { success: false, error: `Sheet template '${CETAK_TEMPLATE_SHEET_NAME}' tidak ditemukan.` };
+    if (!namaGuruSheet) return { success: false, error: `Sheet '${NAMA_GURU_SHEET_NAME}' tidak ditemukan.` };
+    if (!ceklokManualSheet) return { success: false, error: `Sheet '${CEKLOK_MANUAL_SHEET_NAME}' tidak ditemukan.` };
+
+    const daftarNamaGuru = namaGuruSheet.getLastRow() > 0 ?
+                           namaGuruSheet.getRange(1, 1, namaGuruSheet.getLastRow(), 1)
+                                      .getValues().flat().filter(String).map(g => String(g).trim()) :
+                           [];
+    if (daftarNamaGuru.length === 0) {
+      // Tidak perlu menulis ke C2 jika tidak ada guru, cukup return error agar UI tahu
+      return { success: false, error: "Tidak ada data nama guru di sheet 'Nama_Guru'." };
+    }
+
+    const [mmStr, yyyyStr] = selectedMonthYear.split('/');
+    const mm = parseInt(mmStr, 10); // 1-12
+    const yyyy = parseInt(yyyyStr, 10);
+    
+    const tanggalAwalObj = new Date(yyyy, mm - 1, 1); // mm-1 karena bulan di JS 0-indexed
+    const tanggalAkhirObj = new Date(yyyy, mm, 0); 
+    const jumlahHariValid = tanggalAkhirObj.getDate(); // Ini sudah benar, misal Mei 2025 -> 31
+
+    const tanggalAwalFormatted = Utilities.formatDate(tanggalAwalObj, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    const tanggalAkhirFormatted = Utilities.formatDate(tanggalAkhirObj, Session.getScriptTimeZone(), "yyyy-MM-dd");
+
+    const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd_HHmmss_SSS");
+    const userEmailPart = (Session.getActiveUser().getEmail() || "unknownuser").split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
+    const duplicateSheetName = `${TEMP_SHEET_PREFIX}${timestamp}_${userEmailPart}`;
+    
+    const printableSheet = templateSheet.copyTo(ss).setName(duplicateSheetName);
+    printableSheet.activate();
+    SpreadsheetApp.flush();
+
+    printableSheet.getRange("C2").setValue(`${tanggalAwalFormatted} ~ ${tanggalAkhirFormatted}`);
+    printableSheet.getRange("L2").setValue(tanggalAkhirFormatted);
+
+    // --- Mengisi nomor tanggal di baris ke-3 (A3-AE3) dan Set Column Width ---
+    const BARIS_HEADER_TANGGAL = 3;
+    const KOLOM_TANGGAL_PERTAMA = 1; // Kolom A
+    const JUMLAH_KOLOM_TANGGAL_MAX = 31; // AE adalah kolom ke-31
+
+    const headerTanggalArray = [];
+    for (let i = 1; i <= JUMLAH_KOLOM_TANGGAL_MAX; i++) {
+      if (i <= jumlahHariValid) {
+        headerTanggalArray.push(i); // Isi dengan nomor tanggal
+        try { printableSheet.setColumnWidth(KOLOM_TANGGAL_PERTAMA + i - 1, 44); } catch(e){ Logger.log("Gagal setColumnWidth 44 untuk kolom " + (KOLOM_TANGGAL_PERTAMA + i - 1) + ": " + e.message)}
+      } else {
+        headerTanggalArray.push(""); // Kosongkan jika tanggal tidak valid untuk bulan ini
+        try { printableSheet.setColumnWidth(KOLOM_TANGGAL_PERTAMA + i - 1, 24); } catch(e){ Logger.log("Gagal setColumnWidth 24 untuk kolom " + (KOLOM_TANGGAL_PERTAMA + i - 1) + ": " + e.message)}
+      }
+    }
+    printableSheet.getRange(BARIS_HEADER_TANGGAL, KOLOM_TANGGAL_PERTAMA, 1, JUMLAH_KOLOM_TANGGAL_MAX).setValues([headerTanggalArray])
+                  .setHorizontalAlignment("center");
+
+
+    const ceklokManualData = ceklokManualSheet.getDataRange().getValues();
+    const ceklokHeaders = ceklokManualData[0].map(h => String(h).trim());
+    // ... (idxNama, idxTanggal, dll. sama seperti sebelumnya) ...
+    const idxNama = ceklokHeaders.indexOf("Nama_Guru");
+    const idxTanggal = ceklokHeaders.indexOf("Tanggal");
+    const idxMasuk = ceklokHeaders.indexOf("Jam_Masuk");
+    const idxPulang = ceklokHeaders.indexOf("Jam_Pulang");
+    const idxKetManual = ceklokHeaders.indexOf("Ket_Libur_Manual");
+
+    if ([idxNama, idxTanggal, idxMasuk, idxPulang, idxKetManual].includes(-1)) {
+      ss.deleteSheet(printableSheet);
+      return { success: false, error: "Header kolom di 'Ceklok_Manual' tidak lengkap." };
+    }
+
+    const BARIS_MULAI_DATA_GURU_DI_TEMPLATE = 4;
+    if (printableSheet.getLastRow() >= BARIS_MULAI_DATA_GURU_DI_TEMPLATE) {
+        printableSheet.getRange(BARIS_MULAI_DATA_GURU_DI_TEMPLATE, 1, printableSheet.getMaxRows() - BARIS_MULAI_DATA_GURU_DI_TEMPLATE + 1, printableSheet.getMaxColumns())
+                      .clearContent();
+    }
+
+    let barisSaatIni = BARIS_MULAI_DATA_GURU_DI_TEMPLATE;
+    let lastDataRowForPdf = barisSaatIni -1; 
+
+    daftarNamaGuru.forEach((namaGuru, index) => {
+      printableSheet.getRange(barisSaatIni, 1).setValue("ID:").setHorizontalAlignment("left");       // A
+      printableSheet.getRange(barisSaatIni, 3).setValue(index + 1).setHorizontalAlignment("center"); // C
+      printableSheet.getRange(barisSaatIni, 9).setValue("Nama:").setHorizontalAlignment("left");    // I
+      printableSheet.getRange(barisSaatIni, 11).setValue(namaGuru).setHorizontalAlignment("left");   // K
+      printableSheet.getRange(barisSaatIni, 19).setValue("Dept.:").setHorizontalAlignment("left");  // S
+      printableSheet.getRange(barisSaatIni, 21).setValue("MTS~TANUNTUNG").setHorizontalAlignment("left"); // U
+
+      const barisJamMasuk = barisSaatIni + 1;
+      const barisJamPulang = barisSaatIni + 2;
+      
+      // Inisialisasi array sepanjang JUMLAH_KOLOM_TANGGAL_MAX (31)
+      const arrayJamMasuk = new Array(JUMLAH_KOLOM_TANGGAL_MAX).fill("");
+      const arrayJamPulang = new Array(JUMLAH_KOLOM_TANGGAL_MAX).fill("");
+
+      for (let tgl = 1; tgl <= jumlahHariValid; tgl++) { // Loop hanya sampai jumlah hari yang valid
+        const tanggalCeklokStr = Utilities.formatDate(new Date(yyyy, mm - 1, tgl), Session.getScriptTimeZone(), "dd/MM/yyyy");
+        let jamMasukUntukHariIni = ""; 
+        let jamPulangUntukHariIni = "";
+        
+        const dataCeklokHariIni = ceklokManualData.find(row =>
+          String(row[idxNama]).trim() === namaGuru &&
+          row[idxTanggal] instanceof Date && // Penting: pastikan data di sheet adalah objek Date
+          Utilities.formatDate(new Date(row[idxTanggal]), Session.getScriptTimeZone(), "dd/MM/yyyy") === tanggalCeklokStr
+        );
+
+        if (dataCeklokHariIni) {
+          const ketManual = String(dataCeklokHariIni[idxKetManual] || "").trim();
+          if (ketManual === "") { 
+            jamMasukUntukHariIni = formatTimeToHHMM_or_Empty(String(dataCeklokHariIni[idxMasuk] || "").trim());
+            jamPulangUntukHariIni = formatTimeToHHMM_or_Empty(String(dataCeklokHariIni[idxPulang] || "").trim());
+          }
+        }
+        // Tulis ke array pada indeks yang sesuai dengan tanggal (tgl-1 karena array 0-indexed)
+        arrayJamMasuk[tgl - 1] = jamMasukUntukHariIni; 
+        arrayJamPulang[tgl - 1] = jamPulangUntukHariIni;
+      }
+      
+      // Tulis seluruh baris jam masuk dan jam pulang (array sudah sepanjang 31)
+      printableSheet.getRange(barisJamMasuk, KOLOM_TANGGAL_PERTAMA, 1, JUMLAH_KOLOM_TANGGAL_MAX).setValues([arrayJamMasuk])
+                  .setHorizontalAlignment("center").setNumberFormat("@");
+      printableSheet.getRange(barisJamPulang, KOLOM_TANGGAL_PERTAMA, 1, JUMLAH_KOLOM_TANGGAL_MAX).setValues([arrayJamPulang])
+                  .setHorizontalAlignment("center").setNumberFormat("@");
+      
+      lastDataRowForPdf = barisJamPulang;
+      barisSaatIni += 3;
+    });
+
+    // Kolom terakhir yang akan dicetak adalah kolom ke-31 (AE), karena template Anda A3-AE5
+    // Atau jika Anda ingin lebih dinamis berdasarkan jumlah hari: KOLOM_TANGGAL_PERTAMA + jumlahHariValid - 1;
+    // Namun, karena template sampai AE, kita gunakan AE saja.
+    const lastDataColForPdf = JUMLAH_KOLOM_TANGGAL_MAX; 
+
+    SpreadsheetApp.flush();
+    scheduleTemporarySheetDeletion(duplicateSheetName, 2);
+
+    return { 
+      success: true, 
+      message: `Sheet sementara '${duplicateSheetName}' berhasil disiapkan.`,
+      sheetName: duplicateSheetName,
+      sheetId: printableSheet.getSheetId(),
+      lastDataRow: lastDataRowForPdf, 
+      lastDataCol: lastDataColForPdf
+    };
+
+  } catch (e) {
+    Logger.log(`Error di generatePrintableSheet untuk periode ${selectedMonthYear}: ${e.toString()}\nStack: ${e.stack}`);
+    if (typeof printableSheet !== 'undefined' && printableSheet && SpreadsheetApp.getActiveSpreadsheet().getSheetByName(printableSheet.getName())) {
+        SpreadsheetApp.getActiveSpreadsheet().deleteSheet(printableSheet);
+        Logger.log("Sheet duplikat yang gagal diproses telah dihapus.");
+    }
+    return { success: false, error: `Gagal menyiapkan data cetak: ${e.message}` };
+  }
+}
+
+
+/**
+ * Mengekspor sheet tertentu ke PDF dengan print area yang disesuaikan.
+ * @param {string} sheetIdToPrint ID dari sheet yang akan diekspor.
+ * @param {number} printRowCount Jumlah baris yang akan dicetak.
+ * @param {number} printColCount Jumlah kolom yang akan dicetak.
+ * @return {object} Objek berisi URL PDF atau error.
+ */
+function downloadSheetAsPDF(sheetIdToPrint, printRowCount, printColCount) {
+  try {
+    if (!sheetIdToPrint || !printRowCount || !printColCount) {
+        return { error: "Parameter untuk download PDF tidak lengkap."};
+    }
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheets().find(s => s.getSheetId() == sheetIdToPrint);
+
+    if (!sheet) {
+      return { error: `Sheet dengan ID '${sheetIdToPrint}' tidak ditemukan untuk PDF.` };
+    }
+    
+    const sheetName = sheet.getName(); // Dapatkan nama sheet untuk filename PDF
+    const fileName = `${sheetName}_${Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd")}.pdf`;
+
+    // Mengatur print area (A1 notation)
+    // Kolom terakhir adalah printColCount, Baris terakhir adalah printRowCount
+    const printAreaRange = `A1:${getCellA1Notation(printRowCount, printColCount)}`;
+    Logger.log("Print Area: " + printAreaRange);
+
+
+    const exportUrl = ss.getUrl().replace(/edit$/, '') + 'export?';
+    const params = {
+      format: 'pdf',
+      portrait: false, // Lanskap biasanya lebih cocok untuk tabel lebar
+      size: 'A4',      // Atau 'letter', dll.
+      fitw: true,      // Fit to width
+      // scale: 1, // Skala Normal (100%)
+      top_margin: 0.5,
+      bottom_margin: 0.5,
+      left_margin: 0.5,
+      right_margin: 0.5,
+      sheetnames: false,
+      printtitle: false,
+      pagenumbers: false,
+      gridlines: false, // Biasanya false untuk tampilan cetak yang bersih
+      fzr: false,       // Freeze rows = false
+      fzc: false,       // Freeze columns = false
+      gid: sheetIdToPrint,
+      // Menambahkan parameter untuk print area (jika didukung, seringkali r1,c1,r2,c2 lebih reliable)
+      // Namun, parameter export Google Sheets tidak secara langsung mendukung 'printAreaRange' via A1.
+      // Kita akan mengandalkan `fitw` dan batasan data yang ditulis ke sheet sementara.
+      // Jika ingin kontrol print area lebih presisi, cara alternatif adalah membuat file Google Docs/Slides
+      // dari data, lalu ekspor ke PDF, atau menggunakan API pihak ketiga.
+
+      // Untuk PDF export, kita lebih banyak mengontrol data YANG ADA di sheet sementara.
+      // Pastikan sheet sementara hanya berisi data hingga printRowCount dan printColCount.
+      // Parameter di bawah ini untuk export CSV/TSV, mungkin tidak berlaku untuk PDF tapi dicoba:
+      // 'c1': 0, // Kolom mulai (0-indexed)
+      // 'r1': 0, // Baris mulai (0-indexed)
+      // 'c2': printColCount -1,
+      // 'r2': printRowCount -1
+    };
+
+    // Hapus kolom dan baris ekstra di sheet sementara jika ada, sebelum export
+    // Ini lebih efektif daripada parameter URL untuk PDF
+    if (sheet.getMaxColumns() > printColCount) {
+        sheet.deleteColumns(printColCount + 1, sheet.getMaxColumns() - printColCount);
+    }
+    if (sheet.getMaxRows() > printRowCount) {
+        sheet.deleteRows(printRowCount + 1, sheet.getMaxRows() - printRowCount);
+    }
+    SpreadsheetApp.flush();
+
+
+    const query = Object.entries(params).map(([k, v]) => `${k}=${v}`).join('&');
+    const blob = UrlFetchApp.fetch(exportUrl + query, {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true
+    }).getBlob().setName(fileName);
+
+    if (blob.getContentType() !== "application/pdf") {
+        Logger.log("Gagal membuat PDF, respons bukan PDF. Konten: " + blob.getDataAsString());
+        return { error: "Gagal membuat PDF dari server. Respons bukan PDF."};
+    }
+
+    // Simpan ke Drive sementara agar bisa dapat URL publik (jika diperlukan untuk direct link)
+    // Atau langsung kirim sebagai base64 jika frontend bisa handle.
+    // Untuk window.open, kita perlu URL yang bisa diakses.
+    // Namun, karena kita akan menghapus sheet, membuat file di Drive mungkin tidak ideal.
+    // Coba langsung buat data URL jika frontend bisa (tapi window.open biasanya butuh http URL)
+    // Untuk saat ini, kita kembalikan data untuk dibuat file di frontend jika mau,
+    // atau kita bisa buat file di Drive dan berikan linknya.
+    // Paling sederhana: kembalikan base64 dan biarkan frontend membuat blob & link download.
+
+    // Menggunakan Google Drive untuk mendapatkan URL yang dapat diunduh
+    const tempFolder = DriveApp.getFoldersByName("TempPdfCeklok").hasNext() ? DriveApp.getFoldersByName("TempPdfCeklok").next() : DriveApp.createFolder("TempPdfCeklok");
+    const pdfFile = tempFolder.createFile(blob);
+    const downloadUrl = pdfFile.getDownloadUrl().replace("&exportFormat=pdf", ""); // URL untuk diunduh
+
+    // Jadwalkan penghapusan file PDF dari Drive juga (opsional, tapi baik)
+    // Ini memerlukan mekanisme cleanup Drive File terpisah jika diinginkan.
+    // Untuk sekarang, fokus pada penghapusan sheet.
+
+    return { success: true, downloadUrl: downloadUrl, fileName: fileName };
+
+  } catch (e) {
+    Logger.log(`Error downloadSheetAsPDF: ${e.toString()}\nStack: ${e.stack}`);
+    return { error: `Gagal membuat PDF: ${e.message}` };
+  }
+}
+
+/**
+ * Helper untuk mendapatkan notasi A1 dari nomor baris dan kolom.
+ * @param {number} row Nomor baris (1-indexed).
+ * @param {number} col Nomor kolom (1-indexed).
+ * @return {string} Notasi A1, contoh "AE5".
+ */
+function getCellA1Notation(row, col) {
+  let columnName = "";
+  let dividend = col;
+  let modulo;
+  while (dividend > 0) {
+    modulo = (dividend - 1) % 26;
+    columnName = String.fromCharCode(65 + modulo) + columnName;
+    dividend = Math.floor((dividend - modulo) / 26);
+  }
+  return columnName + row;
+}
