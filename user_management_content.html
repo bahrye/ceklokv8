@@ -1,0 +1,49 @@
+<div class="container management-section" id="userManagementContainer">
+  <h2>Kelola Akun Login Pengguna</h2>
+  
+  <div class="form-column">
+    <h3 id="userFormTitle">Tambah Pengguna Baru</h3>
+    <input type="hidden" id="editUsernameKey"> <div class="form-group">
+      <label for="manageUsernameInput">Username:</label>
+      <input type="text" id="manageUsernameInput">
+    </div>
+    <div class="form-group">
+      <label for="manageUserPasswordInput">Password:</label>
+      <input type="password" id="manageUserPasswordInput" placeholder="Password baru/awal">
+      <small>Biarkan kosong jika tidak ingin mengubah password saat mode edit.</small>
+    </div>
+    <div class="form-group">
+      <label for="manageUserRole">Role:</label>
+      <select id="manageUserRole" onchange="toggleManageTeacherNameInput(this.value)">
+        <option value="user">User</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <div class="form-group" id="manageUserTeacherNameGroup" style="display:block;">
+      <label for="manageUserActualTeacherNameDropdown">Nama Guru Asli (jika role 'user'):</label>
+      <select id="manageUserActualTeacherNameDropdown" style="display:none;"></select>
+      <input type="text" id="manageUserActualTeacherNameInput" placeholder="Nama Guru (jika daftar kosong)" style="display:block;">
+      <small>Pilih dari daftar atau isi manual jika daftar kosong. Nama harus ada di 'Kelola Daftar Nama Guru'.</small>
+    </div>
+    <div id="userFormErrorGlobal" class="error-message inline-form-error" style="display:none;"></div>
+    <div class="btn-container">
+      <button id="btnSaveUser" onclick="handleSaveUser()">Simpan Pengguna</button>
+      <button id="btnCancelEditUser" onclick="cancelEditUserForm()" style="display:none; background-color: #777;">Batal Edit</button>
+    </div>
+  </div>
+
+  <div class="table-container">
+    <h3>Daftar Pengguna Terdaftar</h3>
+    <table>
+        <thead>
+            <tr><th>Username</th><th>Role</th><th>Nama Guru Asli</th><th>Aksi</th></tr>
+        </thead>
+        <tbody id="userListTableBody">
+            <tr><td colspan="4">Memuat daftar...</td></tr>
+        </tbody>
+    </table>
+  </div>
+  <div class="btn-container" style="margin-top: 30px;">
+    <button onclick="goBackToAdminDashboard()">Kembali ke Dashboard Admin</button>
+  </div>
+</div>
