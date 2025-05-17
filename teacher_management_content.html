@@ -1,0 +1,31 @@
+<div class="container management-section" id="teacherManagementContainer">
+  <h2>Kelola Daftar Nama Guru</h2>
+
+  <div class="form-column">
+    <h3 id="teacherFormTitle">Tambah Nama Guru Baru</h3>
+    <input type="hidden" id="editTeacherNameKey"> <div class="form-group">
+      <label for="manageTeacherNameInput">Nama Guru:</label>
+      <input type="text" id="manageTeacherNameInput">
+    </div>
+    <div id="teacherFormErrorGlobal" class="error-message inline-form-error" style="display:none;"></div>
+    <div class="btn-container">
+      <button id="btnSaveTeacher" onclick="handleSaveTeacher()">Simpan Nama Guru</button>
+      <button id="btnCancelEditTeacher" onclick="cancelEditTeacherForm()" style="display:none; background-color: #777;">Batal Edit</button>
+    </div>
+  </div>
+  
+  <div class="table-container">
+    <h3>Daftar Nama Guru Saat Ini</h3>
+    <table>
+        <thead>
+            <tr><th>Nama Guru</th><th>Aksi</th></tr>
+        </thead>
+        <tbody id="teacherListTableBody">
+            <tr><td colspan="2">Memuat daftar...</td></tr>
+        </tbody>
+    </table>
+  </div>
+  <div class="btn-container" style="margin-top: 30px;">
+    <button onclick="goBackToAdminDashboard()">Kembali ke Dashboard Admin</button>
+  </div>
+</div>
